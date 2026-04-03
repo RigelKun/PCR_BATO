@@ -1,0 +1,847 @@
+{% extends "base.html" %}
+{% block content %}
+<form method="post" action="{{ form_action or '' }}" class="card pcr-sheet">
+    <div class="sheet-header">
+        <h2>{{ page_title or 'PATIENT CARE REPORT' }}</h2>
+        <div class="inline-actions">
+            <label for="status">Status</label>
+            <select id="status" name="status">
+                <option value="SUBMITTED" {% if prefill and prefill.get('simple', {}).get('status', 'SUBMITTED') == 'SUBMITTED' %}selected{% endif %}>Submitted</option>
+                <option value="DRAFT" {% if prefill and prefill.get('simple', {}).get('status') == 'DRAFT' %}selected{% endif %}>Draft</option>
+            </select>
+        </div>
+    </div>
+
+    <section class="sheet-block">
+        <div class="sheet-row cols-6">
+            <div>
+                <label>Patient Name *</label>
+                <input name="patient_name" required>
+            </div>
+            <div>
+                <label>Age</label>
+                <input name="age" type="number" min="0">
+            </div>
+            <div>
+                <label>Gender</label>
+                <select name="gender">
+                    <option value="">--</option>
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Other</option>
+                </select>
+            </div>
+            <div>
+                <label>Nationality</label>
+                <input name="nationality">
+            </div>
+            <div>
+                <label>Date</label>
+                <input name="call_date" type="date">
+            </div>
+            <div>
+                <label>Time of Call</label>
+                <input name="time_of_call" type="time">
+            </div>
+        </div>
+
+        <div class="sheet-row cols-3">
+            <div>
+                <label>Permanent Address</label>
+                <textarea name="permanent_address" rows="2"></textarea>
+            </div>
+            <div>
+                <label>Contact Number</label>
+                <input name="contact_number" type="tel">
+            </div>
+            <div>
+                <label>Nature of Call</label>
+                <div class="inline-group wrap compact">
+                    <label><input type="radio" name="nature_of_call" value="Emergency"> Emergency</label>
+                    <label><input type="radio" name="nature_of_call" value="Conduction"> Conduction</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="sheet-row cols-4">
+            <div>
+                <label>ETD Base</label>
+                <input name="etd_base" type="time">
+            </div>
+            <div>
+                <label>ETA Scene</label>
+                <input name="eta_scene" type="time">
+            </div>
+            <div>
+                <label>ETD Scene</label>
+                <input name="etd_scene" type="time">
+            </div>
+            <div>
+                <label>ETA Hospital</label>
+                <input name="eta_hospital" type="time">
+            </div>
+        </div>
+
+        <div class="sheet-row cols-3 sample-opqrst-row">
+            <div>
+                <label>Types of Emergencies</label>
+                <div class="inline-group wrap compact">
+                    <label><input type="checkbox" name="types_of_emergencies" value="Medical"> Medical</label>
+                    <label><input type="checkbox" name="types_of_emergencies" value="Trauma"> Trauma</label>
+                    <label><input type="checkbox" name="types_of_emergencies" value="OB"> OB</label>
+                </div>
+            </div>
+            <div>
+                <label>ETD Hospital</label>
+                <input name="etd_hospital" type="time">
+            </div>
+            <div>
+                <label>ETA Base</label>
+                <input name="eta_base" type="time">
+            </div>
+        </div>
+
+        <div>
+            <label>Next of Kin</label>
+            <div id="next_of_kin_container" class="kin-stack"></div>
+            <button type="button" id="add_kin_btn" onclick="addKinEntry()" class="small-btn">+ Add Next of Kin</button>
+        </div>
+
+        <div class="sheet-row cols-2">
+            <div>
+                <label>Location of Incident / Area of Transport</label>
+                <input name="location_of_incident">
+            </div>
+            <div>
+                <label>Nature of Illness / Mechanism of Injury</label>
+                <textarea name="nature_of_illness" rows="2"></textarea>
+                <input name="mechanism_of_injury" placeholder="Mechanism of Injury">
+            </div>
+        </div>
+    </section>
+
+    <h3 class="sheet-title">PATIENT ASSESSMENT</h3>
+    <section class="sheet-block">
+        <div>
+            <label>Chief Complaint</label>
+            <textarea name="chief_complaint" rows="2"></textarea>
+        </div>
+
+        <div class="sheet-row cols-5">
+            <div>
+                <label>C-Spine</label>
+                <div class="inline-group wrap compact">
+                    <label><input type="radio" name="c_spine" value="Suspected"> Suspected</label>
+                    <label><input type="radio" name="c_spine" value="Normal"> Normal</label>
+                </div>
+            </div>
+            <div>
+                <label>Airway</label>
+                <div class="inline-group wrap compact">
+                    <label><input type="radio" name="airway" value="Patent"> Patent</label>
+                    <label><input type="radio" name="airway" value="Obstructed"> Obstructed</label>
+                </div>
+            </div>
+            <div>
+                <label>Breathing</label>
+                <div class="inline-group wrap compact">
+                    <label><input type="checkbox" name="breathing" value="Normal"> Normal</label>
+                    <label><input type="checkbox" name="breathing" value="Retraction"> Retraction</label>
+                    <label><input type="checkbox" name="breathing" value="Labored"> Labored</label>
+                    <label><input type="checkbox" name="breathing" value="Gasping"> Gasping</label>
+                    <label><input type="checkbox" name="breathing" value="Deep"> Deep</label>
+                    <label><input type="checkbox" name="breathing" value="Shallow"> Shallow</label>
+                    <label><input type="checkbox" name="breathing" value="Absent"> Absent</label>
+                </div>
+            </div>
+            <div>
+                <label>Circulation</label>
+                <div class="inline-group wrap compact">
+                    <label><input type="checkbox" name="circulation" value="Normal"> Normal</label>
+                    <label><input type="checkbox" name="circulation" value="Strong"> Strong</label>
+                    <label><input type="checkbox" name="circulation" value="Weak"> Weak</label>
+                    <label><input type="checkbox" name="circulation" value="Regular"> Regular</label>
+                    <label><input type="checkbox" name="circulation" value="Irregular"> Irregular</label>
+                </div>
+            </div>
+            <div>
+                <label>Pupils</label>
+                <select name="pupils">
+                    <option value="">--</option>
+                    <option>Normal</option>
+                    <option>Dilated LR</option>
+                    <option>Constricted LR</option>
+                    <option>No Reaction LR</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="sheet-row cols-3">
+            <div>
+                <label>LOC</label>
+                <div class="inline-group wrap compact">
+                    <label><input type="radio" name="loc_level" value="Alert"> Alert</label>
+                    <label><input type="radio" name="loc_level" value="Verbal"> Verbal</label>
+                    <label><input type="radio" name="loc_level" value="Pain"> Pain</label>
+                    <label><input type="radio" name="loc_level" value="Unresponsive"> Unresponsive</label>
+                </div>
+            </div>
+            <div>
+                <label>Capillary Refill</label>
+                <div class="inline-group wrap compact">
+                    <label><input type="radio" name="capillary_refill" value="<2 sec"> &lt;2 sec</label>
+                    <label><input type="radio" name="capillary_refill" value=">2 sec"> &gt;2 sec</label>
+                </div>
+            </div>
+            <div>
+                <label>Glasgow Coma Scale</label>
+                <div class="grid compact-grid gcs-grid">
+                    <select name="eye_opening" class="gcs-part">
+                        <option value="">Eye</option>
+                        <option value="4">4 Spontaneous</option>
+                        <option value="3">3 Voice</option>
+                        <option value="2">2 Pain</option>
+                        <option value="1">1 None</option>
+                    </select>
+                    <select name="verbal_response" class="gcs-part">
+                        <option value="">Verbal</option>
+                        <option value="5">5 Oriented</option>
+                        <option value="4">4 Confused</option>
+                        <option value="3">3 Inappropriate</option>
+                        <option value="2">2 Incomprehensible</option>
+                        <option value="1">1 None</option>
+                    </select>
+                    <select name="motor_response" class="gcs-part">
+                        <option value="">Motor</option>
+                        <option value="6">6 Obeys</option>
+                        <option value="5">5 Localizes Pain</option>
+                        <option value="4">4 Withdraws</option>
+                        <option value="3">3 Decorticate</option>
+                        <option value="2">2 Decerebrate</option>
+                        <option value="1">1 None</option>
+                    </select>
+                    <input name="gcs_total" id="gcs_total" placeholder="Total" readonly>
+                </div>
+            </div>
+        </div>
+
+        <div class="sheet-row cols-2">
+            <div>
+                <label>Obstetrics Data</label>
+                <table class="obstetrics-table">
+                    <thead>
+                        <tr>
+                            <th colspan="3">OBSTETRICS DATA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>
+                                <label>Last Menstrual Period</label>
+                                <input name="last_menstrual_period" type="date">
+                            </td>
+                            <td>
+                                <label>Gravida</label>
+                                <input name="gravida" type="number" min="0">
+                            </td>
+                            <td>
+                                <label>Pre-Term</label>
+                                <input name="pre_term" type="number" min="0">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <label>Age of Gestation</label>
+                                <input name="age_of_gestation" type="number" min="0">
+                            </td>
+                            <td>
+                                <label>Para</label>
+                                <input name="para" type="number" min="0">
+                            </td>
+                            <td>
+                                <label>Abortion</label>
+                                <input name="abortion" type="number" min="0">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <label>Expected Date of Delivery</label>
+                                <input name="expected_date_of_delivery" type="date">
+                            </td>
+                            <td>
+                                <label>Term</label>
+                                <input name="term" type="number" min="0">
+                            </td>
+                            <td>
+                                <label>Living</label>
+                                <input name="living" type="number" min="0">
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div>
+                <label>Vital Signs (up to 5 rows)</label>
+                <div class="table-wrap">
+                    <table class="tight-table vitals-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th><th>LOC</th><th>BP</th><th>RR</th><th>PR</th><th>Temp</th><th>SPO2</th><th>RBS</th><th>Pain</th><th>E</th><th>V</th><th>M</th><th>T</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for i in range(1, 6) %}
+                            <tr>
+                                <td><input type="time" name="vital_time_{{ i }}"></td>
+                                <td><input name="vital_loc_{{ i }}"></td>
+                                <td><input name="vital_bp_{{ i }}"></td>
+                                <td><input type="number" name="vital_rr_{{ i }}"></td>
+                                <td><input type="number" name="vital_pr_{{ i }}"></td>
+                                <td><input type="number" step="0.1" name="vital_temp_{{ i }}"></td>
+                                <td><input type="number" name="vital_spo2_{{ i }}"></td>
+                                <td><input type="number" name="vital_rbs_{{ i }}"></td>
+                                <td><input type="number" min="1" max="10" name="vital_pain_scale_{{ i }}"></td>
+                                <td><input type="number" name="vital_gcs_eye_{{ i }}"></td>
+                                <td><input type="number" name="vital_gcs_verbal_{{ i }}"></td>
+                                <td><input type="number" name="vital_gcs_motor_{{ i }}"></td>
+                                <td><input type="number" name="vital_gcs_total_{{ i }}"></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="sheet-block">
+        <div class="sheet-row cols-2 sample-opqrst-row">
+            <div>
+                <label>S / SAMPLE</label>
+                <div class="inline-plus-field">
+                    <input id="symptom_entry" type="text" placeholder="S/Sx (Symptoms)">
+                    <button type="button" id="add_symptom_btn" class="plus-chip" aria-label="Add symptom">+</button>
+                </div>
+                <input type="hidden" name="symptoms" id="symptoms_field">
+                <div id="symptom_chip_list" class="chip-list"></div>
+                <textarea name="allergies" rows="1" placeholder="Allergies"></textarea>
+                <textarea name="medications" rows="1" placeholder="Medications"></textarea>
+                <textarea name="past_medical_history" rows="1" placeholder="Past Medical History"></textarea>
+                <textarea name="last_oral_intake" rows="1" placeholder="Last Oral Intake"></textarea>
+                <textarea name="events_prior" rows="1" placeholder="Events Prior"></textarea>
+            </div>
+            <div>
+                <label>PAIN</label>
+                <input name="onset" placeholder="Onset">
+                <input name="provoking_factors" placeholder="Provoking Factors">
+                <input name="quality" placeholder="Quality">
+                <input name="radiation" placeholder="Radiation">
+                <input name="severity" type="number" min="1" max="10" placeholder="Severity">
+                <input name="timing" placeholder="Timing">
+            </div>
+        </div>
+
+        <div class="sheet-row">
+            <div class="physical-exam-panel">
+                <div class="body-diagram-box" aria-label="Body diagram">
+                    <div class="diagram-stage" id="diagram_stage">
+                        <img
+                            id="body_diagram_image"
+                            src="{{ url_for('static', filename='images/PCR.jpg') }}"
+                            alt="Patient body diagram"
+                        >
+                        <canvas id="body_drawing_canvas"></canvas>
+                    </div>
+                </div>
+                <div class="diagram-tools">
+                    <button type="button" id="diagram_draw_btn" class="tool-btn active">Draw</button>
+                    <button type="button" id="diagram_erase_btn" class="tool-btn">Erase</button>
+                    <button type="button" id="diagram_clear_btn" class="tool-btn">Clear</button>
+                </div>
+                <input type="hidden" name="body_diagram_drawing" id="body_diagram_drawing">
+
+                <table class="injury-table">
+                    <tbody>
+                        <tr>
+                            <td>
+                                <label class="injury-label">DEFORMITY:</label>
+                                <input name="deformity" placeholder="Details">
+                            </td>
+                            <td>
+                                <label class="injury-label">BLEEDING:</label>
+                                <input name="bleeding" placeholder="Details">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <label class="injury-label">CONTUSION:</label>
+                                <input name="contusion" placeholder="Details">
+                            </td>
+                            <td>
+                                <label class="injury-label">TENDERNESS:</label>
+                                <input name="tenderness" placeholder="Details">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <label class="injury-label">ABRASION:</label>
+                                <input name="abrasion" placeholder="Details">
+                            </td>
+                            <td>
+                                <label class="injury-label">LACERATION:</label>
+                                <input name="laceration" placeholder="Details">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <label class="injury-label">PUNCTURED:</label>
+                                <input name="punctured" placeholder="Details">
+                            </td>
+                            <td>
+                                <label class="injury-label">SWELLING:</label>
+                                <input name="swelling" placeholder="Details">
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="skin-burns-grid">
+                    <div class="skin-burns-panel">
+                        <h4>Skin</h4>
+                        <div class="choice-list compact">
+                            {% for item in ['Normal','Cyanotic','Pale','Cold','Clammy','Jaundice','Flushed','Ashen','Diaphoretic'] %}
+                            <label><input type="checkbox" name="skin" value="{{ item }}"> {{ item }}</label>
+                            {% endfor %}
+                        </div>
+
+                        <div class="burns-divider">Burns</div>
+                        <div class="choice-list compact">
+                            <label><input type="checkbox" name="burns" value="1st Degree"> 1st Degree</label>
+                            <label><input type="checkbox" name="burns" value="2nd Degree"> 2nd Degree</label>
+                            <label><input type="checkbox" name="burns" value="Superficial"> Superficial</label>
+                            <label><input type="checkbox" name="burns" value="Deep"> Deep</label>
+                            <label><input type="checkbox" name="burns" value="3rd Degree"> 3rd Degree</label>
+                        </div>
+                    </div>
+
+                    <div class="findings-panel">
+                        <h4>Findings</h4>
+                        <div class="choice-list compact">
+                            {% for item in ['Deformity','Contusion','Tenderness','Abrasion','Laceration','Punctured','Swelling','Bleeding'] %}
+                            <label><input type="checkbox" name="findings" value="{{ item }}"> {{ item }}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <label>Narrative Report</label>
+            <textarea name="narrative" rows="6"></textarea>
+        </div>
+    </section>
+
+    <section class="sheet-block">
+        <div class="sheet-row cols-3">
+            <div>
+                <label>Team Information</label>
+                <input name="ambulance_driver" placeholder="Ambulance Driver">
+                <input name="plate_no" placeholder="Plate No.">
+                <input name="responders_tl" placeholder="Responders TL">
+                <input name="crew" placeholder="Crew">
+            </div>
+            <div>
+                <label>Destination Determination</label>
+                <div class="inline-group wrap compact">
+                    {% for item in ['Closest Facility','Patient\'s Choice','Family Choice','Medical Direction','Law Enforcement'] %}
+                    <label><input type="radio" name="destination_determination" value="{{ item }}"> {{ item }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            <div>
+                <label>Endorsements</label>
+                <input name="receiving_facility" placeholder="Receiving Facility">
+                <input name="receiving_personnel" placeholder="Receiving Personnel">
+                <input name="license_no" placeholder="License No.">
+            </div>
+        </div>
+    </section>
+
+    <section class="sheet-block">
+        <div class="sheet-row cols-2">
+            <div>
+                <label>Care Management</label>
+                <p class="subhead">Airway</p>
+                <div class="inline-group wrap compact">
+                    {% for item in ['Suction','Manual Clearance','Head Tilt','Jaw Thrust'] %}
+                    <label><input type="checkbox" name="care_airway" value="{{ item }}"> {{ item }}</label>
+                    {% endfor %}
+                </div>
+
+                <p class="subhead">Breathing</p>
+                <div class="inline-group wrap compact">
+                    {% for item in ['OPA','NPA','Pocket Mask','Nasal Cannula','Simple Facemask','NRM','BVM (LPM)'] %}
+                    <label><input type="checkbox" name="care_breathing" value="{{ item }}"> {{ item }}</label>
+                    {% endfor %}
+                </div>
+
+                <p class="subhead">Circulation / Misc.</p>
+                <div class="inline-group wrap compact">
+                    {% for item in ['CPR','AED','Cold Compress','Warm Compress','Shock Position'] %}
+                    <label><input type="checkbox" name="care_circulation" value="{{ item }}"> {{ item }}</label>
+                    {% endfor %}
+                </div>
+
+                <p class="subhead">Immobilization</p>
+                <div class="inline-group wrap compact">
+                    {% for item in ['CX Collar','Head Block','SAM Splint','Rigid Splint','Traction Splints','KED','Spine Board','Scoop Stretcher'] %}
+                    <label><input type="checkbox" name="care_immobilization" value="{{ item }}"> {{ item }}</label>
+                    {% endfor %}
+                </div>
+
+                <p class="subhead">Wound Care</p>
+                <div class="inline-group wrap compact">
+                    {% for item in ['Bleeding Control','Cleaning / Disinfecting','Dressing'] %}
+                    <label><input type="checkbox" name="care_wound" value="{{ item }}"> {{ item }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div>
+                <label>Cessation of Resuscitation / MVC</label>
+                <div class="sheet-row cols-2 compact-grid">
+                    <input name="mvc_type_of_vehicles" placeholder="Type of Vehicle/s">
+                    <input name="mvc_plate_numbers" placeholder="Plate Number/s">
+                    <input name="mvc_type_of_accident" placeholder="Type of Accident">
+                    <input name="law_enforcer_name" placeholder="Name of Law Enforcer">
+                    <input name="law_enforcer_contact" type="tel" placeholder="Contact Number">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <button type="submit">{{ submit_label or 'Save PCR' }}</button>
+</form>
+
+<script type="application/json" id="pcr-prefill-data">{{ prefill | tojson }}</script>
+
+<script>
+    const gcsParts = document.querySelectorAll('.gcs-part');
+    const gcsTotal = document.getElementById('gcs_total');
+    const symptomEntry = document.getElementById('symptom_entry');
+    const symptomField = document.getElementById('symptoms_field');
+    const symptomChipList = document.getElementById('symptom_chip_list');
+    const addSymptomBtn = document.getElementById('add_symptom_btn');
+    const diagramStage = document.getElementById('diagram_stage');
+    const bodyDiagramImage = document.getElementById('body_diagram_image');
+    const bodyDrawingCanvas = document.getElementById('body_drawing_canvas');
+    const bodyDrawingField = document.getElementById('body_diagram_drawing');
+    const drawToolBtn = document.getElementById('diagram_draw_btn');
+    const eraseToolBtn = document.getElementById('diagram_erase_btn');
+    const clearToolBtn = document.getElementById('diagram_clear_btn');
+    const prefillData = JSON.parse(document.getElementById('pcr-prefill-data').textContent || '{}');
+    const prefillSimple = prefillData.simple || {};
+    const prefillRadio = prefillData.radio || {};
+    const prefillMulti = prefillData.multi || {};
+    const prefillSymptoms = prefillData.symptoms || [];
+    const prefillKinEntries = prefillData.next_of_kin || [];
+    const prefillVitalRows = prefillData.vital_signs || [];
+    let symptoms = [];
+    let kinCount = 0;
+    let drawingMode = 'draw';
+    let drawing = false;
+    let lastPoint = { x: 0, y: 0 };
+    let drawingContext = null;
+
+    function updateGcsTotal() {
+        let total = 0;
+        gcsParts.forEach((el) => {
+            total += Number(el.value || 0);
+        });
+        gcsTotal.value = total ? String(total) : '';
+    }
+
+    gcsParts.forEach((el) => el.addEventListener('change', updateGcsTotal));
+    updateGcsTotal();
+
+    function setSimpleField(name, value) {
+        const field = document.querySelector(`[name="${name}"]`);
+        if (field && value !== undefined && value !== null) {
+            field.value = value;
+        }
+    }
+
+    function setRadioValue(name, value) {
+        if (!value) {
+            return;
+        }
+        const field = document.querySelector(`input[type="radio"][name="${name}"][value="${CSS.escape(value)}"]`);
+        if (field) {
+            field.checked = true;
+        }
+    }
+
+    function setMultiValues(name, values) {
+        const selected = new Set(values || []);
+        document.querySelectorAll(`input[type="checkbox"][name="${name}"]`).forEach((field) => {
+            field.checked = selected.has(field.value);
+        });
+    }
+
+    function syncSymptomsField() {
+        symptomField.value = symptoms.join(', ');
+        symptomChipList.innerHTML = '';
+
+        symptoms.forEach((symptom, index) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'symptom-chip';
+            chip.innerHTML = `${symptom} <span aria-hidden="true">×</span>`;
+            chip.title = 'Remove symptom';
+            chip.addEventListener('click', () => {
+                symptoms.splice(index, 1);
+                syncSymptomsField();
+            });
+            symptomChipList.appendChild(chip);
+        });
+    }
+
+    function addSymptom() {
+        const value = symptomEntry.value.trim();
+        if (!value) {
+            return;
+        }
+
+        symptoms.push(value);
+        symptomEntry.value = '';
+        syncSymptomsField();
+        symptomEntry.focus();
+    }
+
+    function populateKinEntries(entries) {
+        const container = document.getElementById('next_of_kin_container');
+        container.innerHTML = '';
+        kinCount = 0;
+
+        if (!entries.length) {
+            addKinEntry();
+            return;
+        }
+
+        entries.forEach((entryData) => {
+            const entry = createKinEntry(kinCount + 1);
+            container.appendChild(entry);
+            const nameField = entry.querySelector(`[name="kin_name_${kinCount + 1}"]`);
+            const contactField = entry.querySelector(`[name="kin_contact_${kinCount + 1}"]`);
+            if (nameField) {
+                nameField.value = entryData.name || '';
+            }
+            if (contactField) {
+                contactField.value = entryData.contact || '';
+            }
+            kinCount += 1;
+        });
+    }
+
+    function populateVitalRows(rows) {
+        rows.forEach((row, index) => {
+            const rowNumber = index + 1;
+            Object.entries(row).forEach(([key, value]) => {
+                const field = document.querySelector(`[name="vital_${key}_${rowNumber}"]`);
+                if (field) {
+                    field.value = value || '';
+                }
+            });
+        });
+    }
+
+    function applyPrefill() {
+        Object.entries(prefillSimple).forEach(([name, value]) => setSimpleField(name, value));
+        Object.entries(prefillRadio).forEach(([name, value]) => setRadioValue(name, value));
+        Object.entries(prefillMulti).forEach(([name, values]) => setMultiValues(name, values));
+
+        symptoms = Array.isArray(prefillSymptoms) ? [...prefillSymptoms] : [];
+        syncSymptomsField();
+
+        populateKinEntries(prefillKinEntries);
+        populateVitalRows(prefillVitalRows);
+        updateGcsTotal();
+        restoreDiagramDrawing(prefillSimple.body_diagram_drawing || '');
+    }
+
+    function setDrawingMode(mode) {
+        drawingMode = mode;
+        drawToolBtn.classList.toggle('active', mode === 'draw');
+        eraseToolBtn.classList.toggle('active', mode === 'erase');
+    }
+
+    function resizeDrawingCanvas() {
+        if (!bodyDiagramImage.complete || !bodyDiagramImage.naturalWidth) {
+            return;
+        }
+
+        const width = bodyDiagramImage.clientWidth;
+        const height = bodyDiagramImage.clientHeight;
+        const previousData = bodyDrawingField.value;
+
+        bodyDrawingCanvas.width = width;
+        bodyDrawingCanvas.height = height;
+        bodyDrawingCanvas.style.width = `${width}px`;
+        bodyDrawingCanvas.style.height = `${height}px`;
+
+        drawingContext = bodyDrawingCanvas.getContext('2d');
+        drawingContext.lineCap = 'round';
+        drawingContext.lineJoin = 'round';
+
+        if (previousData) {
+            restoreDiagramDrawing(previousData);
+        }
+    }
+
+    function getCanvasPoint(event) {
+        const rect = bodyDrawingCanvas.getBoundingClientRect();
+        const source = event.touches ? event.touches[0] : event;
+        return {
+            x: source.clientX - rect.left,
+            y: source.clientY - rect.top,
+        };
+    }
+
+    function persistDiagramDrawing() {
+        bodyDrawingField.value = bodyDrawingCanvas.toDataURL('image/png');
+    }
+
+    function beginDrawing(event) {
+        if (!drawingContext) {
+            return;
+        }
+        drawing = true;
+        lastPoint = getCanvasPoint(event);
+    }
+
+    function continueDrawing(event) {
+        if (!drawing || !drawingContext) {
+            return;
+        }
+
+        const currentPoint = getCanvasPoint(event);
+        drawingContext.globalCompositeOperation = drawingMode === 'erase' ? 'destination-out' : 'source-over';
+        drawingContext.strokeStyle = '#b91c1c';
+        drawingContext.lineWidth = drawingMode === 'erase' ? 18 : 3;
+
+        drawingContext.beginPath();
+        drawingContext.moveTo(lastPoint.x, lastPoint.y);
+        drawingContext.lineTo(currentPoint.x, currentPoint.y);
+        drawingContext.stroke();
+
+        lastPoint = currentPoint;
+        persistDiagramDrawing();
+    }
+
+    function stopDrawing() {
+        drawing = false;
+    }
+
+    function clearDiagramDrawing() {
+        if (!drawingContext) {
+            return;
+        }
+        drawingContext.clearRect(0, 0, bodyDrawingCanvas.width, bodyDrawingCanvas.height);
+        bodyDrawingField.value = '';
+    }
+
+    function restoreDiagramDrawing(dataUrl) {
+        if (!dataUrl || !drawingContext) {
+            return;
+        }
+        const image = new Image();
+        image.onload = () => {
+            drawingContext.clearRect(0, 0, bodyDrawingCanvas.width, bodyDrawingCanvas.height);
+            drawingContext.drawImage(image, 0, 0, bodyDrawingCanvas.width, bodyDrawingCanvas.height);
+            bodyDrawingField.value = dataUrl;
+        };
+        image.src = dataUrl;
+    }
+
+    addSymptomBtn.addEventListener('click', addSymptom);
+    symptomEntry.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            addSymptom();
+        }
+    });
+    applyPrefill();
+
+    drawToolBtn.addEventListener('click', () => setDrawingMode('draw'));
+    eraseToolBtn.addEventListener('click', () => setDrawingMode('erase'));
+    clearToolBtn.addEventListener('click', clearDiagramDrawing);
+
+    bodyDrawingCanvas.addEventListener('mousedown', beginDrawing);
+    bodyDrawingCanvas.addEventListener('mousemove', continueDrawing);
+    bodyDrawingCanvas.addEventListener('mouseup', stopDrawing);
+    bodyDrawingCanvas.addEventListener('mouseleave', stopDrawing);
+
+    bodyDrawingCanvas.addEventListener('touchstart', (event) => {
+        event.preventDefault();
+        beginDrawing(event);
+    }, { passive: false });
+    bodyDrawingCanvas.addEventListener('touchmove', (event) => {
+        event.preventDefault();
+        continueDrawing(event);
+    }, { passive: false });
+    bodyDrawingCanvas.addEventListener('touchend', stopDrawing);
+
+    if (bodyDiagramImage.complete) {
+        resizeDrawingCanvas();
+    } else {
+        bodyDiagramImage.addEventListener('load', resizeDrawingCanvas);
+    }
+    window.addEventListener('resize', resizeDrawingCanvas);
+    setDrawingMode('draw');
+
+    const textareas = document.querySelectorAll('textarea');
+    textareas.forEach((textarea) => {
+        function adjustHeight() {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 500) + 'px';
+        }
+        textarea.addEventListener('input', adjustHeight);
+        textarea.addEventListener('change', adjustHeight);
+        adjustHeight();
+    });
+
+    function createKinEntry(index) {
+        const entry = document.createElement('div');
+        entry.className = 'kin-entry';
+        entry.id = `kin_entry_${index}`;
+        entry.innerHTML = `
+            <div>
+                <label>Name</label>
+                <input type="text" name="kin_name_${index}" placeholder="Next of Kin Name">
+            </div>
+            <div>
+                <label>Contact Number</label>
+                <input type="tel" name="kin_contact_${index}" placeholder="Contact Number">
+            </div>
+            <button type="button" onclick="removeKinEntry(${index})" class="btn-danger">Remove</button>
+        `;
+        return entry;
+    }
+
+    function addKinEntry() {
+        const container = document.getElementById('next_of_kin_container');
+        const entry = createKinEntry(kinCount + 1);
+        container.appendChild(entry);
+        kinCount += 1;
+    }
+
+    function removeKinEntry(index) {
+        const entry = document.getElementById(`kin_entry_${index}`);
+        if (entry) {
+            entry.remove();
+        }
+    }
+
+</script>
+{% endblock %}

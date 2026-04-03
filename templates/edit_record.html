@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card pcr-sheet">
+    <div class="section-head">
+        <h2>Edit PCR Record #{{ record['id'] }}</h2>
+        <div class="inline-actions">
+            <a class="btn-link" href="{{ url_for('view_record', report_id=record['id']) }}">Back</a>
+        </div>
+    </div>
+
+    <form method="post" class="edit-form">
+        <div class="sheet-block">
+            <div class="sheet-row cols-4">
+                <div>
+                    <label>Patient Name *</label>
+                    <input name="patient_name" value="{{ record['patient_name'] }}" required>
+                </div>
+                <div>
+                    <label>Nature of Call</label>
+                    <input name="nature_of_call" value="{{ record['nature_of_call'] or '' }}">
+                </div>
+                <div>
+                    <label>Date</label>
+                    <input name="call_date" type="date" value="{{ record['call_date'] or '' }}">
+                </div>
+                <div>
+                    <label>Time of Call</label>
+                    <input name="time_of_call" type="time" value="{{ record['time_of_call'] or '' }}">
+                </div>
+            </div>
+            <div class="sheet-row cols-4">
+                <div>
+                    <label>Status</label>
+                    <select name="status">
+                        <option value="SUBMITTED" {% if record['status'] == 'SUBMITTED' %}selected{% endif %}>Submitted</option>
+                        <option value="DRAFT" {% if record['status'] == 'DRAFT' %}selected{% endif %}>Draft</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="sheet-block">
+            <div class="sheet-row cols-2 sample-opqrst-row">
+                <div>
+                    <label>S / SAMPLE</label>
+                    <div class="inline-plus-field">
+                        <input id="symptom_entry" type="text" placeholder="S/Sx (Symptoms)">
+                        <button type="button" id="add_symptom_btn" class="plus-chip" aria-label="Add symptom">+</button>
+                    </div>
+                    <input type="hidden" name="symptoms" id="symptoms_field" value="{{ symptoms_list | join(', ') }}">
+                    <div id="symptom_chip_list" class="chip-list"></div>
+                    <textarea name="allergies" rows="1" placeholder="Allergies">{{ form_data.get('sample_history', {}).get('allergies', '') }}</textarea>
+                    <textarea name="medications" rows="1" placeholder="Medications">{{ form_data.get('sample_history', {}).get('medications', '') }}</textarea>
+                    <textarea name="past_medical_history" rows="1" placeholder="Past Medical History">{{ form_data.get('sample_history', {}).get('past_medical_history', '') }}</textarea>
+                    <textarea name="last_oral_intake" rows="1" placeholder="Last Oral Intake">{{ form_data.get('sample_history', {}).get('last_oral_intake', '') }}</textarea>
+                    <textarea name="events_prior" rows="1" placeholder="Events Prior">{{ form_data.get('sample_history', {}).get('events_prior', '') }}</textarea>
+                </div>
+                <div>
+                    <label>PAIN</label>
+                    <input name="onset" placeholder="Onset" value="{{ form_data.get('opqrst', {}).get('onset', '') }}">
+                    <input name="provoking_factors" placeholder="Provoking Factors" value="{{ form_data.get('opqrst', {}).get('provoking_factors', '') }}">
+                    <input name="quality" placeholder="Quality" value="{{ form_data.get('opqrst', {}).get('quality', '') }}">
+                    <input name="radiation" placeholder="Radiation" value="{{ form_data.get('opqrst', {}).get('radiation', '') }}">
+                    <input name="severity" type="number" min="1" max="10" placeholder="Severity" value="{{ form_data.get('opqrst', {}).get('severity', '') }}">
+                    <input name="timing" placeholder="Timing" value="{{ form_data.get('opqrst', {}).get('timing', '') }}">
+                </div>
+            </div>
+        </div>
+
+        <button type="submit">Save Changes</button>
+    </form>
+</section>
+
+<script>
+    const symptomEntry = document.getElementById('symptom_entry');
+    const symptomField = document.getElementById('symptoms_field');
+    const symptomChipList = document.getElementById('symptom_chip_list');
+    const addSymptomBtn = document.getElementById('add_symptom_btn');
+    let symptoms = (symptomField.value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    function syncSymptomsField() {
+        symptomField.value = symptoms.join(', ');
+        symptomChipList.innerHTML = '';
+
+        symptoms.forEach((symptom, index) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'symptom-chip';
+            chip.innerHTML = `${symptom} <span aria-hidden="true">×</span>`;
+            chip.title = 'Remove symptom';
+            chip.addEventListener('click', () => {
+                symptoms.splice(index, 1);
+                syncSymptomsField();
+            });
+            symptomChipList.appendChild(chip);
+        });
+    }
+
+    function addSymptom() {
+        const value = symptomEntry.value.trim();
+        if (!value) {
+            return;
+        }
+
+        symptoms.push(value);
+        symptomEntry.value = '';
+        syncSymptomsField();
+        symptomEntry.focus();
+    }
+
+    addSymptomBtn.addEventListener('click', addSymptom);
+    symptomEntry.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            addSymptom();
+        }
+    });
+
+    syncSymptomsField();
+</script>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card printable">
+    <div class="section-head">
+        <h2>PCR Record #{{ record['id'] }}</h2>
+        <div class="inline-actions">
+            <a class="btn-link" href="{{ url_for('records') }}">Back to Dashboard</a>
+            <a class="btn-link" href="{{ url_for('edit_record', report_id=record['id']) }}">Edit</a>
+            <button type="button" onclick="window.print()">Print</button>
+        </div>
+    </div>
+
+    <p><strong>Patient Name:</strong> {{ record['patient_name'] }}</p>
+    <p><strong>Nature of Call:</strong> {{ record['nature_of_call'] or '-' }}</p>
+    <p><strong>Date/Time:</strong> {{ record['call_date'] or '-' }} {{ record['time_of_call'] or '' }}</p>
+    <p><strong>Status:</strong> {{ record['status'] }}</p>
+
+    {% for section_name, section_data in form_data.items() %}
+    <article class="view-section">
+        <h3>{{ section_name.replace('_', ' ').title() }}</h3>
+        {% if section_data is mapping %}
+            <table>
+                <tbody>
+                    {% for key, value in section_data.items() %}
+                    <tr>
+                        <th>{{ key.replace('_', ' ').title() }}</th>
+                        <td>
+                            {% if key == 'body_diagram_drawing' and value %}
+                                <div class="diagram-preview">
+                                    <img class="diagram-base" src="{{ url_for('static', filename='images/PCR.jpg') }}" alt="Body diagram base">
+                                    <img class="diagram-overlay" src="{{ value }}" alt="Saved body diagram drawing overlay">
+                                </div>
+                            {% elif value is sequence and value is not string %}
+                                {{ value | join(', ') if value else '-' }}
+                            {% else %}
+                                {{ value if value else '-' }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% elif section_data is sequence and section_data is not string %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Data</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in section_data %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ item }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p>{{ section_data if section_data else '-' }}</p>
+        {% endif %}
+    </article>
+    {% endfor %}
+</section>
+{% endblock %}
