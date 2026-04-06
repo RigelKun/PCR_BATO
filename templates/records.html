@@ -6,12 +6,14 @@
         <div class="inline-actions">
             <a class="btn-link" href="{{ url_for('new_pcr') }}">+ New PCR</a>
             <form
+                id="delete-all-form"
                 method="post"
                 action="{{ url_for('delete_all_records') }}"
-                onsubmit="return confirm('Are you sure you want to delete all data?') && confirm('Are you sure?');"
+                onsubmit="return confirmDeleteAllWithBackup(event, this);"
             >
                 <button type="submit" class="btn-danger">Delete All</button>
             </form>
+            <a id="backup-db-link" class="btn-link" href="{{ url_for('export_records_db') }}" style="display: none;">Backup DB</a>
         </div>
     </div>
 
@@ -62,4 +64,29 @@
         </table>
     </div>
 </section>
+
+<script>
+    function confirmDeleteAllWithBackup(event, form) {
+        event.preventDefault();
+
+        const shouldBackup = confirm('Do you want to download a backup database before deleting all entries?');
+        if (!shouldBackup) {
+            return false;
+        }
+
+        const backupLink = document.getElementById('backup-db-link');
+        if (backupLink) {
+            backupLink.click();
+        }
+
+        window.setTimeout(() => {
+            const shouldDelete = confirm('Backup download started. Delete all entries now?');
+            if (shouldDelete) {
+                form.submit();
+            }
+        }, 300);
+
+        return false;
+    }
+</script>
 {% endblock %}

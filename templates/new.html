@@ -448,8 +448,14 @@
                 <label>Team Information</label>
                 <input name="ambulance_driver" placeholder="Ambulance Driver">
                 <input name="plate_no" placeholder="Plate No.">
+                <input name="communicator" placeholder="Communicator">
                 <input name="responders_tl" placeholder="Responders TL">
-                <input name="crew" placeholder="Crew">
+                <div class="inline-plus-field">
+                    <input id="crew_member_entry" type="text" placeholder="Crew">
+                    <button type="button" id="add_crew_member_btn" class="plus-chip" aria-label="Add crew member">+</button>
+                </div>
+                <div id="crew_member_list" class="chip-list"></div>
+                <input type="hidden" name="crew" id="crew_members_field">
             </div>
             <div>
                 <label>Destination Determination</label>
@@ -464,6 +470,12 @@
                 <input name="receiving_facility" placeholder="Receiving Facility">
                 <input name="receiving_personnel" placeholder="Receiving Personnel">
                 <input name="license_no" placeholder="License No.">
+            </div>
+        </div>
+        <div class="sheet-row cols-1">
+            <div>
+                <label>Remarks</label>
+                <textarea name="remarks" rows="3" placeholder="Remarks"></textarea>
             </div>
         </div>
     </section>
@@ -521,6 +533,71 @@
         </div>
     </section>
 
+    <h3 class="sheet-title">INFORMED CONSENT / REFUSAL</h3>
+    <section class="sheet-block consent-section">
+        <div class="consent-box">
+            <h4>Informed Consent</h4>
+            <div class="sheet-row cols-3 consent-sign-row">
+                <div>
+                    <label>Name</label>
+                    <input name="consent_patient_name" placeholder="Patient Name">
+                </div>
+                <div>
+                    <label>Date</label>
+                    <input name="consent_date" type="date">
+                </div>
+                <div>
+                    <label>Time</label>
+                    <input name="consent_time" type="time">
+                </div>
+            </div>
+        </div>
+
+        <div class="consent-box">
+            <h4>Refusal of Treatment or Transport</h4>
+            <label class="consent-check">
+                <input type="checkbox" name="refusal_treatment_agreement" value="Confirmed">
+                Agreed
+            </label>
+            <div class="sheet-row cols-3 consent-sign-row">
+                <div>
+                    <label>Name</label>
+                    <input name="refusal_treatment_patient_signature" placeholder="Name">
+                </div>
+                <div>
+                    <label>Date</label>
+                    <input name="refusal_treatment_date" type="date">
+                </div>
+                <div>
+                    <label>Time</label>
+                    <input name="refusal_treatment_time" type="time">
+                </div>
+            </div>
+        </div>
+
+        <div class="consent-box">
+            <h4>Refusal for Admission</h4>
+            <label class="consent-check">
+                <input type="checkbox" name="refusal_admission_agreement" value="Confirmed">
+                Agreed
+            </label>
+            <div class="sheet-row cols-3 consent-sign-row">
+                <div>
+                    <label>Name</label>
+                    <input name="refusal_admission_physician_signature" placeholder="Name">
+                </div>
+                <div>
+                    <label>Date</label>
+                    <input name="refusal_admission_date" type="date">
+                </div>
+                <div>
+                    <label>Time</label>
+                    <input name="refusal_admission_time" type="time">
+                </div>
+            </div>
+        </div>
+    </section>
+
     <button type="submit">{{ submit_label or 'Save PCR' }}</button>
 </form>
 
@@ -547,8 +624,11 @@
     const prefillSymptoms = prefillData.symptoms || [];
     const prefillKinEntries = prefillData.next_of_kin || [];
     const prefillVitalRows = prefillData.vital_signs || [];
+    const prefillCrewMembers = prefillSimple.crew_members || (prefillSimple.crew ? [prefillSimple.crew] : []);
     let symptoms = [];
+    let crewMembers = [];
     let kinCount = 0;
+    let crewMemberCount = 0;
     let drawingMode = 'draw';
     let drawing = false;
     let lastPoint = { x: 0, y: 0 };
@@ -607,6 +687,26 @@
         });
     }
 
+    function syncCrewMembersField() {
+        const crewField = document.getElementById('crew_members_field');
+        const crewList = document.getElementById('crew_member_list');
+        crewField.value = crewMembers.join(', ');
+        crewList.innerHTML = '';
+
+        crewMembers.forEach((member, index) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'symptom-chip';
+            chip.innerHTML = `${member} <span aria-hidden="true">×</span>`;
+            chip.title = 'Remove crew member';
+            chip.addEventListener('click', () => {
+                crewMembers.splice(index, 1);
+                syncCrewMembersField();
+            });
+            crewList.appendChild(chip);
+        });
+    }
+
     function addSymptom() {
         const value = symptomEntry.value.trim();
         if (!value) {
@@ -617,6 +717,19 @@
         symptomEntry.value = '';
         syncSymptomsField();
         symptomEntry.focus();
+    }
+
+    function addCrewMember() {
+        const crewEntry = document.getElementById('crew_member_entry');
+        const value = crewEntry.value.trim();
+        if (!value) {
+            return;
+        }
+
+        crewMembers.push(value);
+        crewEntry.value = '';
+        syncCrewMembersField();
+        crewEntry.focus();
     }
 
     function populateKinEntries(entries) {
@@ -663,6 +776,9 @@
 
         symptoms = Array.isArray(prefillSymptoms) ? [...prefillSymptoms] : [];
         syncSymptomsField();
+
+        crewMembers = Array.isArray(prefillCrewMembers) ? [...prefillCrewMembers] : [];
+        syncCrewMembersField();
 
         populateKinEntries(prefillKinEntries);
         populateVitalRows(prefillVitalRows);
@@ -769,6 +885,13 @@
         if (event.key === 'Enter') {
             event.preventDefault();
             addSymptom();
+        }
+    });
+    document.getElementById('add_crew_member_btn').addEventListener('click', addCrewMember);
+    document.getElementById('crew_member_entry').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            addCrewMember();
         }
     });
     applyPrefill();

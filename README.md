@@ -11,6 +11,8 @@ Flask + SQLite web app for creating, editing, viewing, exporting, and backing up
 - View and print records.
 - Delete records.
 - Export all data to CSV (flattened nested fields).
+- Export a logsheet-style Excel workbook using the `instance/logsheet_template.xlsx` template.
+- Preserve the template logo and print layout in exported XLSX files.
 - Export full database backup (`.db`) for transfer/recovery.
 
 ## Tech Stack
@@ -30,6 +32,7 @@ Flask + SQLite web app for creating, editing, viewing, exporting, and backing up
 - [static/images/PCR.jpg](static/images/PCR.jpg): Body diagram image.
 - `pcr.db`: SQLite DB file (auto-created).
 - `backups/`: Generated DB backup files.
+- `instance/logsheet_template.xlsx`: Excel template file for the logsheet export.
 
 ## Setup
 
@@ -59,34 +62,47 @@ python app.py
 
 ## How To Use
 
-1. Go to Dashboard.
-2. Click `New PCR`.
-3. Fill out the form sections.
-4. In the body diagram area:
-   - `Draw`: annotate findings.
-   - `Erase`: remove parts of drawing.
-   - `Clear`: remove all drawing.
-5. Click `Save PCR`.
-6. Use Dashboard actions:
-   - `View`
-   - `Edit`
-   - `Delete`
+1. Open the Dashboard at `/records`.
+2. Click `+ New PCR` to start a new record.
+3. Fill in the form from top to bottom.
+4. Complete the body diagram section if needed:
+  - `Draw` to mark injuries or findings.
+  - `Erase` to remove part of a mark.
+  - `Clear` to reset the diagram.
+5. Fill the Team Information and Informed Consent / Refusal sections.
+6. Click `Save PCR` when the record is finished.
+7. After saving, use the Dashboard actions to manage the record:
+  - `View` to open the printable record.
+  - `Edit` to make changes.
+  - `Delete` to remove a single record.
+8. To export data, use the top navigation links:
+  - `Export CSV` for a flattened data file.
+  - `Export XLSX` for the logsheet workbook.
+  - `Backup DB` for the full SQLite backup.
+9. To delete all entries, use `Delete All` on the Dashboard. The app will prompt you to download a backup first before confirming deletion.
 
 ## Export and Backup
 
 - Export flattened CSV:
   - Route: `/records/export.csv`
   - Includes top-level metadata and flattened nested PCR fields.
+- Export filtered Excel workbook:
+  - Route: `/records/export.xlsx`
+  - Includes only: Type of Emergency, Chief Complaint, Name of Patient, Address of Patient, Sex, Date of Incident, Time of Incident, Place of Incident, Driver, Responders, Communicator, Remarks.
+  - Uses `instance/logsheet_template.xlsx` and preserves the embedded logo and print layout.
 - Export full DB backup:
   - Route: `/records/export.db`
   - Also available via top nav `Backup DB`.
   - Creates a timestamped backup in `backups/` and downloads it.
+- Delete all records:
+  - The dashboard `Delete All` action prompts for a backup download first, then asks for final confirmation before deleting.
 
 ## Data Persistence and Reliability
 
 - SQLite durability settings are enabled (`WAL`, `synchronous=FULL`, `foreign_keys=ON`).
 - Create/edit/delete operations include DB error handling with rollback on failure.
 - If a field is empty, CSV output shows `N/A`.
+- The XLSX export is generated from the template workbook and keeps centered, bordered cells for the printed logsheet layout.
 
 ## Multi-Computer Use
 

@@ -5,13 +5,33 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-
+from xml.etree import ElementTree as ET
+from zipfile import ZIP_DEFLATED, ZipFile
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Border, Font, Side
 from flask import Flask, flash, g, redirect, render_template, request, url_for, Response, send_file
 
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE = Path(os.environ.get("PCR_DB_PATH", str(BASE_DIR / "pcr.db"))).resolve()
 BACKUP_DIR = BASE_DIR / "backups"
+TEMPLATE_XLSX = BASE_DIR / "instance" / "logsheet_template.xlsx"
+XLSX_EXPORT_HEADER_ROW = 8
+XLSX_EXPORT_FIRST_DATA_ROW = 9
+XLSX_EXPORT_FIELDS = [
+    ("type_of_emergency", "Type of Emergency"),
+    ("chief_complaint", "Chief Complaint"),
+    ("patient_name", "Name of Patient"),
+    ("patient_address", "Address of Patient"),
+    ("sex", "Sex"),
+    ("date_of_incident", "Date of Incident"),
+    ("time_of_incident", "Time of Incident"),
+    ("place_of_incident", "Place of Incident"),
+    ("driver", "Driver"),
+    ("responders", "Responders"),
+    ("communicator", "Communicator"),
+    ("remarks", "Remarks"),
+]
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "change-this-secret-key"
@@ -56,9 +76,39 @@ def init_db() -> None:
     db.close()
 
 
-def _create_db_backup_file() -> Path:
+def _format_backup_date(value: str) -> str | None:
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return f"{parsed.strftime('%B')} {parsed.day} {parsed.year}"
+
+
+def _build_backup_filename() -> str:
+    with sqlite3.connect(DATABASE) as db:
+        db.row_factory = sqlite3.Row
+        row = db.execute(
+            """
+            SELECT MIN(call_date) AS first_date, MAX(call_date) AS last_date
+            FROM pcr_reports
+            WHERE call_date IS NOT NULL AND TRIM(call_date) <> ''
+            """
+        ).fetchone()
+
+    first_date = _format_backup_date(row["first_date"] or "") if row else None
+    last_date = _format_backup_date(row["last_date"] or "") if row else None
+
+    if first_date and last_date:
+        return f"{first_date} - {last_date}.db"
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = BACKUP_DIR / f"pcr_backup_{timestamp}.db"
+    return f"pcr_backup_{timestamp}.db"
+
+
+def _create_db_backup_file() -> Path:
+    backup_path = BACKUP_DIR / _build_backup_filename()
+    if backup_path.exists():
+        backup_path.unlink()
 
     src = get_db()
     dest = sqlite3.connect(backup_path)
@@ -147,6 +197,101 @@ def _load_form_data(row: sqlite3.Row) -> dict:
         return {}
 
 
+def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
+    if TEMPLATE_XLSX.exists():
+        workbook = load_workbook(TEMPLATE_XLSX)
+    else:
+        workbook = Workbook()
+
+    worksheet = workbook.active
+    worksheet.title = "PCR Records"
+    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+    worksheet.page_setup.orientation = "landscape"
+    worksheet.page_setup.fitToWidth = 1
+    worksheet.page_setup.fitToHeight = 1
+    worksheet.print_options.horizontalCentered = True
+    worksheet.page_margins.left = 0.25
+    worksheet.page_margins.right = 0.25
+    worksheet.page_margins.top = 0.35
+    worksheet.page_margins.bottom = 0.35
+
+    thin_side = Side(style="thin", color="000000")
+    cell_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+    for column_index, (_field_name, label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
+        cell = worksheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index)
+        cell.value = label
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = cell_border
+
+    for row_index, row in enumerate(rows, start=XLSX_EXPORT_FIRST_DATA_ROW):
+        row_data = _extract_xlsx_row(row)
+        for column_index, (field_name, _label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
+            cell = worksheet.cell(row=row_index, column=column_index)
+            cell.value = row_data[field_name]
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = cell_border
+
+    return workbook
+
+
+def _merge_template_assets(export_bytes: bytes) -> bytes:
+    template_files = {
+        "[Content_Types].xml",
+        "xl/sharedStrings.xml",
+        "xl/worksheets/_rels/sheet1.xml.rels",
+        "xl/drawings/drawing1.xml",
+        "xl/drawings/_rels/drawing1.xml.rels",
+        "xl/media/image1.png",
+        "xl/media/image2.png",
+    }
+
+    merged_entries: dict[str, bytes] = {}
+    with ZipFile(io.BytesIO(export_bytes), "r") as export_zip:
+        for info in export_zip.infolist():
+            if info.filename in template_files:
+                continue
+            data = export_zip.read(info.filename)
+            if info.filename == "xl/styles.xml":
+                styles_xml = data.decode("utf-8")
+                target = 'numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1" pivotButton="0" quotePrefix="0" xfId="0"><alignment horizontal="center" vertical="center" /></xf>'
+                replacement = 'numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1" pivotButton="0" quotePrefix="0" xfId="0"><alignment horizontal="center" vertical="center" /></xf>'
+                styles_xml = styles_xml.replace(target, replacement, 1)
+                data = styles_xml.encode("utf-8")
+            if info.filename == "xl/worksheets/sheet1.xml":
+                sheet_xml = data.decode("utf-8")
+                if "xmlns:r=" not in sheet_xml:
+                    sheet_xml = sheet_xml.replace(
+                        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+                        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+                        1,
+                    )
+                if '<drawing r:id="rId1"/>' not in sheet_xml:
+                    sheet_xml = sheet_xml.replace("</worksheet>", '<drawing r:id="rId1"/></worksheet>', 1)
+                data = sheet_xml.encode("utf-8")
+            merged_entries[info.filename] = data
+
+    with ZipFile(TEMPLATE_XLSX, "r") as template_zip:
+        for filename in template_files:
+            merged_entries[filename] = template_zip.read(filename)
+
+    merged_output = io.BytesIO()
+    with ZipFile(merged_output, "w", compression=ZIP_DEFLATED) as merged_zip:
+        for filename, data in merged_entries.items():
+            merged_zip.writestr(filename, data)
+
+    return merged_output.getvalue()
+
+
+def _excel_column_letter(column_index: int) -> str:
+    letters = ""
+    while column_index:
+        column_index, remainder = divmod(column_index - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
 def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None) -> dict:
     form_data = form_data or {}
 
@@ -159,6 +304,7 @@ def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None
     incident_details = form_data.get("incident_details", {})
     team_destination = form_data.get("team_destination", {})
     mvc = form_data.get("mvc", {})
+    consent_refusal = form_data.get("consent_refusal", {})
 
     if row is None:
         patient_name = ""
@@ -229,14 +375,36 @@ def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None
             "license_no": team_destination.get("license_no", ""),
             "responders_tl": team_destination.get("responders_tl", ""),
             "crew": team_destination.get("crew", ""),
+            "crew_members": _split_csv_values(team_destination.get("crew", "")),
             "destination_determination": team_destination.get("destination_determination", ""),
             "receiving_facility": team_destination.get("receiving_facility", ""),
             "receiving_personnel": team_destination.get("receiving_personnel", ""),
+            "communicator": team_destination.get("communicator", "") or team_destination.get("receiving_personnel", ""),
+            "remarks": form_data.get("narrative_report", ""),
             "mvc_type_of_vehicles": mvc.get("type_of_vehicles", ""),
             "mvc_plate_numbers": mvc.get("plate_numbers", ""),
             "mvc_type_of_accident": mvc.get("type_of_accident", ""),
             "law_enforcer_name": mvc.get("law_enforcer_name", ""),
             "law_enforcer_contact": mvc.get("law_enforcer_contact", ""),
+            "consent_patient_name": consent_refusal.get("consent_patient_name", ""),
+            "consent_patient_signature": consent_refusal.get("consent_patient_signature", ""),
+            "consent_date": consent_refusal.get("consent_date", ""),
+            "consent_time": consent_refusal.get("consent_time", ""),
+            "consent_guardian_signature": consent_refusal.get("consent_guardian_signature", ""),
+            "consent_guardian_date": consent_refusal.get("consent_guardian_date", ""),
+            "consent_guardian_time": consent_refusal.get("consent_guardian_time", ""),
+            "refusal_treatment_patient_signature": consent_refusal.get("refusal_treatment_patient_signature", ""),
+            "refusal_treatment_witness": consent_refusal.get("refusal_treatment_witness", ""),
+            "refusal_treatment_date": consent_refusal.get("refusal_treatment_date", ""),
+            "refusal_treatment_time": consent_refusal.get("refusal_treatment_time", ""),
+            "refusal_admission_facility": consent_refusal.get("refusal_admission_facility", ""),
+            "refusal_admission_reason": consent_refusal.get("refusal_admission_reason", ""),
+            "refusal_admission_date": consent_refusal.get("refusal_admission_date", ""),
+            "refusal_admission_time": consent_refusal.get("refusal_admission_time", ""),
+            "refusal_admission_physician_signature": consent_refusal.get("refusal_admission_physician_signature", ""),
+            "refusal_admission_physician_datetime": consent_refusal.get("refusal_admission_physician_datetime", ""),
+            "refusal_admission_witness_signature": consent_refusal.get("refusal_admission_witness_signature", ""),
+            "refusal_admission_witness_datetime": consent_refusal.get("refusal_admission_witness_datetime", ""),
         },
         "radio": {
             "nature_of_call": nature_of_call,
@@ -257,6 +425,9 @@ def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None
             "care_circulation": form_data.get("care_management", {}).get("circulation", []),
             "care_immobilization": form_data.get("care_management", {}).get("immobilization", []),
             "care_wound": form_data.get("care_management", {}).get("wound_care", []),
+            "consent_agreement": consent_refusal.get("consent_agreement", []),
+            "refusal_treatment_agreement": consent_refusal.get("refusal_treatment_agreement", []),
+            "refusal_admission_agreement": consent_refusal.get("refusal_admission_agreement", []),
         },
         "symptoms": _split_csv_values(sample_history.get("symptoms", "")),
         "next_of_kin": form_data.get("next_of_kin", {}).get("kins", []),
@@ -285,6 +456,69 @@ def _flatten_for_csv(value, prefix: str, output: dict[str, str]) -> None:
 
     text = "" if value is None else str(value).strip()
     output[prefix] = text if text else "N/A"
+
+
+def _extract_xlsx_row(row: sqlite3.Row) -> dict[str, str]:
+    form_data = _load_form_data(row)
+    contact_dispatch = form_data.get("contact_dispatch", {})
+    patient_info = form_data.get("patient_info", {})
+    incident_details = form_data.get("incident_details", {})
+    team_destination = form_data.get("team_destination", {})
+    narrative = form_data.get("narrative_report", "")
+    communicator = team_destination.get("communicator", "") or team_destination.get("receiving_personnel", "")
+
+    type_of_emergency = contact_dispatch.get("types_of_emergencies", [])
+    if isinstance(type_of_emergency, list):
+        type_of_emergency = ", ".join(type_of_emergency)
+
+    return {
+        "type_of_emergency": type_of_emergency or "",
+        "chief_complaint": form_data.get("patient_assessment", {}).get("chief_complaint", ""),
+        "patient_name": row["patient_name"] or "",
+        "patient_address": contact_dispatch.get("permanent_address", ""),
+        "sex": patient_info.get("gender", ""),
+        "date_of_incident": row["call_date"] or "",
+        "time_of_incident": row["time_of_call"] or "",
+        "place_of_incident": incident_details.get("location_of_incident", ""),
+        "driver": team_destination.get("ambulance_driver", ""),
+        "responders": team_destination.get("responders_tl", "") or ", ".join(team_destination.get("crew_members", [])) or team_destination.get("crew", ""),
+        "communicator": communicator,
+        "remarks": narrative,
+    }
+
+
+def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
+    if TEMPLATE_XLSX.exists():
+        workbook = load_workbook(TEMPLATE_XLSX)
+    else:
+        workbook = Workbook()
+
+    worksheet = workbook.active
+    worksheet.title = "PCR Records"
+    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+    worksheet.page_setup.orientation = "landscape"
+    worksheet.page_setup.fitToWidth = 1
+    worksheet.page_setup.fitToHeight = 1
+    worksheet.print_options.horizontalCentered = True
+    worksheet.page_margins.left = 0.25
+    worksheet.page_margins.right = 0.25
+    worksheet.page_margins.top = 0.35
+    worksheet.page_margins.bottom = 0.35
+
+    for column_index, (_field_name, label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
+        cell = worksheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index)
+        cell.value = label
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row_index, row in enumerate(rows, start=XLSX_EXPORT_FIRST_DATA_ROW):
+        row_data = _extract_xlsx_row(row)
+        for column_index, (field_name, _label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
+            cell = worksheet.cell(row=row_index, column=column_index)
+            cell.value = row_data[field_name]
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    return workbook
 
 
 def _collect_form_data() -> dict:
@@ -373,15 +607,17 @@ def _collect_form_data() -> dict:
             "punctured": request.form.get("punctured", "").strip(),
             "swelling": request.form.get("swelling", "").strip(),
         },
-        "narrative_report": request.form.get("narrative", "").strip(),
+        "narrative_report": request.form.get("remarks", request.form.get("narrative", "")).strip(),
         "team_destination": {
             "ambulance_driver": request.form.get("ambulance_driver", "").strip(),
             "plate_no": request.form.get("plate_no", "").strip(),
             "license_no": request.form.get("license_no", "").strip(),
             "responders_tl": request.form.get("responders_tl", "").strip(),
-            "crew": request.form.get("crew", "").strip(),
+            "crew": ", ".join(_collect_multi("crew_member")) or request.form.get("crew", "").strip(),
+            "crew_members": _collect_multi("crew_member"),
             "destination_determination": request.form.get("destination_determination", "").strip(),
             "receiving_facility": request.form.get("receiving_facility", "").strip(),
+            "communicator": request.form.get("communicator", "").strip(),
             "receiving_personnel": request.form.get("receiving_personnel", "").strip(),
         },
         "care_management": {
@@ -397,6 +633,30 @@ def _collect_form_data() -> dict:
             "type_of_accident": request.form.get("mvc_type_of_accident", "").strip(),
             "law_enforcer_name": request.form.get("law_enforcer_name", "").strip(),
             "law_enforcer_contact": request.form.get("law_enforcer_contact", "").strip(),
+        },
+        "consent_refusal": {
+            "consent_patient_name": request.form.get("consent_patient_name", "").strip(),
+            "consent_patient_signature": request.form.get("consent_patient_signature", "").strip(),
+            "consent_date": request.form.get("consent_date", "").strip(),
+            "consent_time": request.form.get("consent_time", "").strip(),
+            "consent_guardian_signature": request.form.get("consent_guardian_signature", "").strip(),
+            "consent_guardian_date": request.form.get("consent_guardian_date", "").strip(),
+            "consent_guardian_time": request.form.get("consent_guardian_time", "").strip(),
+            "consent_agreement": _collect_multi("consent_agreement"),
+            "refusal_treatment_patient_signature": request.form.get("refusal_treatment_patient_signature", "").strip(),
+            "refusal_treatment_witness": request.form.get("refusal_treatment_witness", "").strip(),
+            "refusal_treatment_date": request.form.get("refusal_treatment_date", "").strip(),
+            "refusal_treatment_time": request.form.get("refusal_treatment_time", "").strip(),
+            "refusal_treatment_agreement": _collect_multi("refusal_treatment_agreement"),
+            "refusal_admission_facility": request.form.get("refusal_admission_facility", "").strip(),
+            "refusal_admission_reason": request.form.get("refusal_admission_reason", "").strip(),
+            "refusal_admission_date": request.form.get("refusal_admission_date", "").strip(),
+            "refusal_admission_time": request.form.get("refusal_admission_time", "").strip(),
+            "refusal_admission_physician_signature": request.form.get("refusal_admission_physician_signature", "").strip(),
+            "refusal_admission_physician_datetime": request.form.get("refusal_admission_physician_datetime", "").strip(),
+            "refusal_admission_witness_signature": request.form.get("refusal_admission_witness_signature", "").strip(),
+            "refusal_admission_witness_datetime": request.form.get("refusal_admission_witness_datetime", "").strip(),
+            "refusal_admission_agreement": _collect_multi("refusal_admission_agreement"),
         },
     }
 
@@ -473,7 +733,7 @@ def records():
     if search_date:
         query += " AND call_date = ?"
         params.append(search_date)
-    query += " ORDER BY id DESC"
+    query += " ORDER BY id ASC"
 
     rows = db.execute(query, params).fetchall()
     return render_template(
@@ -661,6 +921,23 @@ def export_records_csv():
         csv_data,
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=pcr_records.csv"},
+    )
+
+
+@app.route("/records/export.xlsx")
+def export_records_xlsx():
+    db = get_db()
+    rows = db.execute("SELECT * FROM pcr_reports ORDER BY id DESC").fetchall()
+    workbook = _build_xlsx_workbook(rows)
+    output = io.BytesIO()
+    workbook.save(output)
+    final_bytes = _merge_template_assets(output.getvalue())
+
+    return send_file(
+        io.BytesIO(final_bytes),
+        as_attachment=True,
+        download_name="pcr_records.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 

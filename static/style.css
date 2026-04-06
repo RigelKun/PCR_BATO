@@ -319,6 +319,66 @@ button[type="button"] {
     font-size: 1rem;
 }
 
+.consent-section {
+    border-top: 1px solid #222;
+    padding-top: 0.8rem;
+}
+
+.consent-box {
+    border: 1px solid #222;
+    padding: 0.7rem;
+    margin-bottom: 0.7rem;
+    background: #fff;
+}
+
+.consent-box h4 {
+    margin: 0 0 0.5rem;
+    border: 1px solid #222;
+    text-align: center;
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+    padding: 0.2rem;
+    text-transform: uppercase;
+}
+
+.consent-box p {
+    margin: 0.3rem 0 0.7rem;
+    font-size: 0.92rem;
+    line-height: 1.35;
+}
+
+.consent-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-weight: 600;
+    margin: 0.2rem 0 0.8rem;
+}
+
+.consent-check input[type="checkbox"] {
+    margin-top: 0.1rem;
+}
+
+.consent-sign-row input {
+    border: none;
+    border-bottom: 1px solid #222;
+    border-radius: 0;
+    background: transparent;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.consent-sign-row input:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+@media print {
+    .consent-box {
+        page-break-inside: avoid;
+    }
+}
+
 .sheet-block {
     border: 1px solid #222;
     padding: 0.45rem;
