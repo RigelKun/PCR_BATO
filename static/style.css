@@ -24,7 +24,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.5rem;
+    padding: 0.8rem 1.2rem;
     background: #ffffffcc;
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(4px);
@@ -37,19 +37,28 @@ body {
     flex-wrap: wrap;
 }
 
+.topbar .navbar-brand {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.topbar .btn {
+    border-radius: 10px;
+    padding: 0.38rem 0.78rem;
+    font-weight: 600;
+}
+
 .nav-export-dropdown {
     position: relative;
+    border: 0;
+    padding: 0;
+    background: transparent;
 }
 
 .nav-export-dropdown summary {
     list-style: none;
     cursor: pointer;
-    border: 1px solid #b7cadf;
-    background: #f6fbff;
-    color: #134f77;
-    padding: 0.4rem 0.7rem;
-    border-radius: 8px;
-    font-weight: 600;
+    margin-bottom: 0;
 }
 
 .nav-export-dropdown summary::-webkit-details-marker {
@@ -85,13 +94,6 @@ body {
 .topbar h1 {
     margin: 0;
     font-size: 1.1rem;
-}
-
-.topbar nav a {
-    margin-left: 1rem;
-    color: var(--accent-2);
-    text-decoration: none;
-    font-weight: 600;
 }
 
 .container {
@@ -153,14 +155,14 @@ body {
     }
 }
 
-details {
+.pcr-sheet details {
     border: 1px solid var(--line);
     border-radius: 10px;
     padding: 0.6rem 0.8rem;
     background: #fbfdff;
 }
 
-summary {
+.pcr-sheet summary {
     cursor: pointer;
     font-weight: 700;
     color: #114b5f;

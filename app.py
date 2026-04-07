@@ -1,25 +1,45 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
 import io
 import json
 import os
 import sqlite3
+import sys
+import shutil
 from pathlib import Path
 from copy import copy
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, Side
-from flask import Flask, flash, g, redirect, render_template, request, url_for, Response, send_file
+from flask import Flask, flash, g, redirect, render_template, request, url_for, Response, send_file, send_from_directory
 
 
-BASE_DIR = Path(__file__).resolve().parent
-DATABASE = Path(os.environ.get("PCR_DB_PATH", str(BASE_DIR / "pcr.db"))).resolve()
-BACKUP_DIR = BASE_DIR / "backups"
-TEMPLATE_XLSX = BASE_DIR / "instance" / "logsheet_template.xlsx"
+SOURCE_DIR = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    RUNTIME_DIR = Path(sys.executable).resolve().parent
+    RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", RUNTIME_DIR))
+else:
+    RUNTIME_DIR = SOURCE_DIR
+    RESOURCE_DIR = SOURCE_DIR
+
+if getattr(sys, "frozen", False):
+    DEFAULT_DATA_DIR = Path(os.environ.get("LOCALAPPDATA", str(RUNTIME_DIR))) / "PCR_BATO"
+else:
+    DEFAULT_DATA_DIR = SOURCE_DIR / "instance"
+
+APP_DATA_DIR = Path(os.environ.get("PCR_BATO_DATA_DIR", str(DEFAULT_DATA_DIR))).resolve()
+DATABASE = Path(os.environ.get("PCR_DB_PATH", str(APP_DATA_DIR / "pcr.db"))).resolve()
+BACKUP_DIR = APP_DATA_DIR / "backups"
+TEMPLATE_XLSX = APP_DATA_DIR / "logsheet_template.xlsx"
+BUNDLED_TEMPLATE_XLSX = RESOURCE_DIR / "instance" / "logsheet_template.xlsx"
 XLSX_EXPORT_HEADER_ROW = 8
 XLSX_EXPORT_FIRST_DATA_ROW = 9
-XLSX_EXPORT_ENTRIES_PER_SHEET = 40
+XLSX_EXPORT_ENTRIES_PER_SHEET = 25
+XLSX_EXPORT_ROW_HEIGHT = 30
+XLSX_EXPORT_HEADER_FONT_SIZE = 12
+XLSX_EXPORT_DATA_FONT_SIZE = 11
+SEED_DEMO_DATA = os.environ.get("PCR_SEED_SAMPLE_DATA", "1").strip().lower() not in {"0", "false", "no", "off"}
 XLSX_EXPORT_FIELDS = [
     ("type_of_emergency", "Type of Emergency"),
     ("chief_complaint", "Chief Complaint"),
@@ -35,8 +55,22 @@ XLSX_EXPORT_FIELDS = [
     ("remarks", "Remarks"),
 ]
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=str(RESOURCE_DIR / "templates"),
+    static_folder=str(RESOURCE_DIR / "static"),
+)
 app.config["SECRET_KEY"] = "change-this-secret-key"
+
+
+@app.after_request
+def disable_dynamic_page_cache(response):
+    # Prevent stale dashboards/forms when opened through browsers with caching/PWA.
+    if response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 def get_db() -> sqlite3.Connection:
@@ -51,8 +85,18 @@ def get_db() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     DATABASE.parent.mkdir(parents=True, exist_ok=True)
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    if not TEMPLATE_XLSX.exists() and BUNDLED_TEMPLATE_XLSX.exists():
+        shutil.copy2(BUNDLED_TEMPLATE_XLSX, TEMPLATE_XLSX)
+
+
+def _get_template_xlsx_path() -> Path:
+    if TEMPLATE_XLSX.exists():
+        return TEMPLATE_XLSX
+    return BUNDLED_TEMPLATE_XLSX
+
     db = sqlite3.connect(DATABASE)
     db.execute(
         """
@@ -75,7 +119,254 @@ def init_db() -> None:
     if "form_data" not in cols:
         db.execute("ALTER TABLE pcr_reports ADD COLUMN form_data TEXT NOT NULL DEFAULT '{}' ")
     db.commit()
+
+    total_records = db.execute("SELECT COUNT(*) AS total FROM pcr_reports").fetchone()["total"]
+    if total_records == 0 and SEED_DEMO_DATA:
+        _seed_demo_records(db)
     db.close()
+
+
+def _build_seed_record(index: int) -> tuple[str, str, str, str, str, dict]:
+    first_names = [
+        "Maria",
+        "Jose",
+        "Ana",
+        "John",
+        "Catherine",
+        "Michael",
+        "Grace",
+        "Daniel",
+        "Angela",
+        "Mark",
+    ]
+    last_names = [
+        "Santos",
+        "Reyes",
+        "Cruz",
+        "Garcia",
+        "Lopez",
+        "Ramos",
+        "Torres",
+        "Navarro",
+        "Bautista",
+        "Flores",
+    ]
+    locations = [
+        "Poblacion North, Bato",
+        "Poblacion South, Bato",
+        "San Isidro Barangay Hall",
+        "Rural Health Unit Area",
+        "Coastal Road, Bato",
+        "Mountain View, Bato",
+    ]
+    facilities = [
+        "Bato District Hospital",
+        "RHU Bato",
+        "Catbalogan Provincial Hospital",
+        "Regional Medical Center",
+    ]
+    emergencies = [
+        "Medical",
+        "Trauma",
+        "OB",
+        "Cardiac",
+        "Respiratory",
+        "Neurologic",
+    ]
+    complaints = [
+        "Chest pain",
+        "Shortness of breath",
+        "Fever and weakness",
+        "Abdominal pain",
+        "Hypertension episode",
+        "Minor vehicular injury",
+        "Dizziness and vomiting",
+        "Laceration on forearm",
+    ]
+    drivers = ["A. Dela Cruz", "R. Santos", "M. Garcia", "J. Flores"]
+    crews = [
+        "P. Navarro, L. Torres",
+        "K. Ramos, M. Flores",
+        "J. Reyes, A. Bautista",
+        "C. Garcia, M. Lopez",
+    ]
+    addresses = [
+        "Brgy. Poblacion North, Bato, Leyte",
+        "Brgy. Poblacion South, Bato, Leyte",
+        "Brgy. San Roque, Bato, Leyte",
+        "Brgy. Sto. Nino, Bato, Leyte",
+        "Brgy. Libagon, Bato, Leyte",
+    ]
+
+    patient_name = f"{first_names[index % len(first_names)]} {last_names[index % len(last_names)]}"
+    nature_of_call = emergencies[index % len(emergencies)]
+    chief_complaint = complaints[index % len(complaints)]
+    patient_address = addresses[index % len(addresses)]
+    incident_location = locations[index % len(locations)]
+    driver = drivers[index % len(drivers)]
+    crew = crews[index % len(crews)]
+    facility = facilities[index % len(facilities)]
+    sex = "Male" if index % 2 == 0 else "Female"
+    age = str(19 + (index % 58))
+    call_date = (datetime.now().date() - timedelta(days=99 - index)).isoformat()
+    time_of_call = f"{7 + (index % 12):02d}:{(index * 5) % 60:02d}"
+    narr = f"Patient assessed at {incident_location}. Stable for transport to {facility}."
+
+    form_data = {
+        "patient_info": {
+            "age": age,
+            "gender": sex,
+            "nationality": "Filipino",
+            "date": call_date,
+            "time_of_call": time_of_call,
+        },
+        "contact_dispatch": {
+            "permanent_address": patient_address,
+            "contact_number": f"09{index % 10}{(index + 2) % 10}{(index + 4) % 10}{(index + 6) % 10}{(index + 8) % 10}{(index + 1) % 10}{(index + 3) % 10}{(index + 5) % 10}{(index + 7) % 10}",
+            "etd_base": time_of_call,
+            "types_of_emergencies": [nature_of_call],
+            "eta_scene": f"{8 + (index % 18)} mins",
+        },
+        "next_of_kin": {
+            "kins": [
+                {
+                    "name": f"{first_names[(index + 3) % len(first_names)]} {last_names[(index + 4) % len(last_names)]}",
+                    "contact": f"09{(index + 1) % 10}{(index + 3) % 10}{(index + 5) % 10}{(index + 7) % 10}{(index + 9) % 10}{(index + 2) % 10}{(index + 4) % 10}{(index + 6) % 10}{(index + 8) % 10}{(index + 0) % 10}",
+                }
+            ],
+        },
+        "incident_details": {
+            "location_of_incident": incident_location,
+            "nature_of_illness": chief_complaint,
+            "mechanism_of_injury": "N/A" if nature_of_call != "Trauma" else "Slip and fall",
+            "etd_scene": f"{12 + (index % 10)} mins",
+            "eta_hospital": f"{15 + (index % 12)} mins",
+            "etd_hospital": f"{20 + (index % 10)} mins",
+            "eta_base": f"{25 + (index % 12)} mins",
+        },
+        "patient_assessment": {
+            "chief_complaint": chief_complaint,
+            "c_spine": "No" if nature_of_call in {"Medical", "Cardiac", "Respiratory", "Neurologic"} else "Yes",
+            "airway": "Patent",
+            "breathing": ["Spontaneous"],
+            "circulation": ["Radial pulse present"],
+            "pupils": "PERRLA",
+            "loc_level": "Alert",
+            "capillary_refill": "<2 sec",
+        },
+        "gcs": {
+            "eye_opening": "4",
+            "verbal_response": "5",
+            "motor_response": "6",
+            "gcs_total": "15",
+        },
+        "vital_signs": [
+            {
+                "time": time_of_call,
+                "loc": "Alert",
+                "bp": f"{110 + (index % 20)}/{70 + (index % 10)}",
+                "rr": str(16 + (index % 4)),
+                "pr": str(78 + (index % 18)),
+                "temp": f"{36.4 + (index % 6) * 0.1:.1f}",
+                "spo2": str(97 - (index % 3)),
+                "rbs": str(95 + (index % 30)),
+                "pain_scale": str(index % 10),
+                "gcs_eye": "4",
+                "gcs_verbal": "5",
+                "gcs_motor": "6",
+                "gcs_total": "15",
+            }
+        ],
+        "sample_history": {
+            "symptoms": chief_complaint,
+            "allergies": "None reported",
+            "medications": "Maintenance meds as prescribed",
+            "past_medical_history": "Hypertension" if index % 3 == 0 else "N/A",
+            "last_oral_intake": "Within 4 hours",
+            "events_prior": "Onset noted before EMS arrival",
+        },
+        "opqrst": {
+            "onset": "Sudden",
+            "provoking_factors": "Activity",
+            "quality": "Dull",
+            "radiation": "None",
+            "severity": str(3 + (index % 7)),
+            "timing": "Intermittent",
+        },
+        "physical_exam": {
+            "skin": ["Warm", "Dry"],
+            "burns": [],
+            "findings": ["No obvious deformity"],
+            "body_diagram_drawing": "",
+            "deformity": "No",
+            "bleeding": "No",
+            "contusion": "No",
+            "tenderness": "Mild",
+            "abrasion": "No",
+            "laceration": "No",
+            "punctured": "No",
+            "swelling": "No",
+        },
+        "narrative_report": narr,
+        "team_destination": {
+            "ambulance_driver": driver,
+            "plate_no": f"AMB-{100 + index:03d}",
+            "license_no": f"DL-{20000 + index}",
+            "responders_tl": crew.split(",")[0].strip(),
+            "crew": crew,
+            "crew_members": [member.strip() for member in crew.split(",")],
+            "destination_determination": facility,
+            "receiving_facility": facility,
+            "communicator": "Dispatch",
+            "receiving_personnel": f"Nurse {last_names[(index + 2) % len(last_names)]}",
+        },
+        "care_management": {
+            "airway": ["Positioning"],
+            "breathing": ["Oxygen support"],
+            "circulation": ["Monitoring"],
+            "immobilization": ["None" if nature_of_call != "Trauma" else "Spinal precautions"],
+            "wound_care": ["Dressing" if nature_of_call == "Trauma" else "None"],
+        },
+        "mvc": {
+            "type_of_vehicles": "Car vs Motorcycle" if nature_of_call == "Trauma" else "N/A",
+            "plate_numbers": f"ABC-{300 + index}",
+            "type_of_accident": "Minor collision" if nature_of_call == "Trauma" else "N/A",
+            "law_enforcer_name": f"Officer {last_names[(index + 5) % len(last_names)]}",
+            "law_enforcer_contact": f"0917{index:07d}"[-11:],
+        },
+        "consent_refusal": {
+            "consent_patient_name": patient_name,
+            "consent_date": call_date,
+            "consent_time": time_of_call,
+            "refusal_treatment_agreement": "Agreed",
+            "refusal_admission_agreement": "Agreed",
+        },
+    }
+
+    return patient_name, nature_of_call, call_date, time_of_call, sex, form_data
+
+
+def _seed_demo_records(db: sqlite3.Connection) -> None:
+    for index in range(100):
+        patient_name, nature_of_call, call_date, time_of_call, sex, form_data = _build_seed_record(index)
+        db.execute(
+            """
+            INSERT INTO pcr_reports (
+                patient_name, nature_of_call, call_date, time_of_call,
+                status, form_data, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                patient_name,
+                nature_of_call,
+                call_date,
+                time_of_call,
+                "SUBMITTED",
+                json.dumps(form_data, ensure_ascii=True),
+                datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
+    db.commit()
 
 
 def _format_backup_date(value: str) -> str | None:
@@ -136,6 +427,18 @@ def close_db(_error: BaseException | None) -> None:
 @app.route("/")
 def home():
     return redirect(url_for("records"))
+
+
+@app.route("/manifest.webmanifest")
+def webmanifest() -> Response:
+    return send_from_directory(RESOURCE_DIR / "static", "manifest.webmanifest", mimetype="application/manifest+json")
+
+
+@app.route("/sw.js")
+def service_worker() -> Response:
+    response = send_from_directory(RESOURCE_DIR / "static", "sw.js", mimetype="application/javascript")
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
 
 
 def _collect_multi(field: str) -> list[str]:
@@ -212,8 +515,9 @@ def _load_form_data(row: sqlite3.Row) -> dict:
 
 
 def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
-    if TEMPLATE_XLSX.exists():
-        workbook = load_workbook(TEMPLATE_XLSX)
+    template_path = _get_template_xlsx_path()
+    if template_path.exists():
+        workbook = load_workbook(template_path)
     else:
         workbook = Workbook()
 
@@ -267,7 +571,7 @@ def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
         worksheet.sheet_properties.pageSetUpPr.fitToPage = True
         worksheet.page_setup.orientation = "landscape"
         worksheet.page_setup.fitToWidth = 1
-        worksheet.page_setup.fitToHeight = 1
+        worksheet.page_setup.fitToHeight = 0
         worksheet.page_setup.scale = None
         worksheet.print_options.horizontalCentered = True
         worksheet.print_title_rows = f"{XLSX_EXPORT_HEADER_ROW}:{XLSX_EXPORT_HEADER_ROW}"
@@ -275,6 +579,9 @@ def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
         worksheet.page_margins.right = 0.25
         worksheet.page_margins.top = 0.35
         worksheet.page_margins.bottom = 0.35
+
+        # Keep template column geometry so logo anchor stays aligned.
+        worksheet.row_dimensions[XLSX_EXPORT_HEADER_ROW].height = 36
 
         # Ensure sheet is fresh before writing this chunk.
         for row_index in range(XLSX_EXPORT_FIRST_DATA_ROW, max(worksheet.max_row, XLSX_EXPORT_FIRST_DATA_ROW) + 1):
@@ -284,105 +591,25 @@ def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
         for column_index, (_field_name, label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
             cell = worksheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index)
             cell.value = label
-            cell.font = Font(bold=True)
+            cell.font = Font(bold=True, size=XLSX_EXPORT_HEADER_FONT_SIZE)
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = cell_border
 
         for row_offset, row in enumerate(chunk, start=0):
             row_index = XLSX_EXPORT_FIRST_DATA_ROW + row_offset
             row_data = _extract_xlsx_row(row)
-            worksheet.row_dimensions[row_index].height = 20
+            worksheet.row_dimensions[row_index].height = XLSX_EXPORT_ROW_HEIGHT
             for column_index, (field_name, _label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
                 cell = worksheet.cell(row=row_index, column=column_index)
                 cell.value = row_data[field_name]
-                cell.alignment = Alignment(horizontal="center", vertical="center", shrink_to_fit=True)
+                cell.font = Font(size=XLSX_EXPORT_DATA_FONT_SIZE)
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                 cell.border = cell_border
 
         last_data_row = max(XLSX_EXPORT_HEADER_ROW, XLSX_EXPORT_FIRST_DATA_ROW + len(chunk) - 1)
         worksheet.print_area = f"A1:L{last_data_row}"
 
     return workbook
-
-
-def _merge_template_assets(export_bytes: bytes) -> bytes:
-    template_files = {
-        "xl/worksheets/_rels/sheet1.xml.rels",
-        "xl/drawings/drawing1.xml",
-        "xl/drawings/_rels/drawing1.xml.rels",
-        "xl/media/image1.png",
-        "xl/media/image2.png",
-    }
-
-    merged_entries: dict[str, bytes] = {}
-    with ZipFile(io.BytesIO(export_bytes), "r") as export_zip:
-        for info in export_zip.infolist():
-            if info.filename in template_files:
-                continue
-            data = export_zip.read(info.filename)
-            if info.filename == "[Content_Types].xml":
-                ct_ns = "http://schemas.openxmlformats.org/package/2006/content-types"
-                root = ET.fromstring(data)
-
-                has_png_default = any(
-                    child.tag == f"{{{ct_ns}}}Default" and child.attrib.get("Extension") == "png"
-                    for child in root
-                )
-                if not has_png_default:
-                    root.append(
-                        ET.Element(
-                            f"{{{ct_ns}}}Default",
-                            {
-                                "Extension": "png",
-                                "ContentType": "image/png",
-                            },
-                        )
-                    )
-
-                has_drawing_override = any(
-                    child.tag == f"{{{ct_ns}}}Override" and child.attrib.get("PartName") == "/xl/drawings/drawing1.xml"
-                    for child in root
-                )
-                if not has_drawing_override:
-                    root.append(
-                        ET.Element(
-                            f"{{{ct_ns}}}Override",
-                            {
-                                "PartName": "/xl/drawings/drawing1.xml",
-                                "ContentType": "application/vnd.openxmlformats-officedocument.drawing+xml",
-                            },
-                        )
-                    )
-
-                data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
-            if info.filename == "xl/styles.xml":
-                styles_xml = data.decode("utf-8")
-                target = 'numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1" pivotButton="0" quotePrefix="0" xfId="0"><alignment horizontal="center" vertical="center" /></xf>'
-                replacement = 'numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1" pivotButton="0" quotePrefix="0" xfId="0"><alignment horizontal="center" vertical="center" /></xf>'
-                styles_xml = styles_xml.replace(target, replacement, 1)
-                data = styles_xml.encode("utf-8")
-            if info.filename == "xl/worksheets/sheet1.xml":
-                sheet_xml = data.decode("utf-8")
-                if "xmlns:r=" not in sheet_xml:
-                    sheet_xml = sheet_xml.replace(
-                        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
-                        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
-                        1,
-                    )
-                if '<drawing r:id="rId1"/>' not in sheet_xml:
-                    sheet_xml = sheet_xml.replace("</worksheet>", '<drawing r:id="rId1"/></worksheet>', 1)
-                data = sheet_xml.encode("utf-8")
-            merged_entries[info.filename] = data
-
-    with ZipFile(TEMPLATE_XLSX, "r") as template_zip:
-        for filename in template_files:
-            merged_entries[filename] = template_zip.read(filename)
-
-    merged_output = io.BytesIO()
-    with ZipFile(merged_output, "w", compression=ZIP_DEFLATED) as merged_zip:
-        for filename, data in merged_entries.items():
-            merged_zip.writestr(filename, data)
-
-    return merged_output.getvalue()
 
 
 def _excel_column_letter(column_index: int) -> str:
@@ -1006,10 +1233,9 @@ def export_records_xlsx():
     workbook = _build_xlsx_workbook(rows)
     output = io.BytesIO()
     workbook.save(output)
-    final_bytes = _merge_template_assets(output.getvalue())
 
     return send_file(
-        io.BytesIO(final_bytes),
+        io.BytesIO(output.getvalue()),
         as_attachment=True,
         download_name=download_name,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
