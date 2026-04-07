@@ -30,6 +30,58 @@ body {
     backdrop-filter: blur(4px);
 }
 
+.topbar nav {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.nav-export-dropdown {
+    position: relative;
+}
+
+.nav-export-dropdown summary {
+    list-style: none;
+    cursor: pointer;
+    border: 1px solid #b7cadf;
+    background: #f6fbff;
+    color: #134f77;
+    padding: 0.4rem 0.7rem;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.nav-export-dropdown summary::-webkit-details-marker {
+    display: none;
+}
+
+.nav-export-form {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.4rem);
+    display: flex;
+    gap: 0.45rem;
+    align-items: center;
+    padding: 0.55rem;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    z-index: 40;
+    min-width: 220px;
+}
+
+.nav-export-form select,
+.nav-export-form button {
+    margin-top: 0;
+}
+
+.nav-export-form button {
+    width: auto;
+    padding: 0.5rem 0.75rem;
+}
+
 .topbar h1 {
     margin: 0;
     font-size: 1.1rem;

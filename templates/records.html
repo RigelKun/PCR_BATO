@@ -28,7 +28,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>#</th>
                     <th>Patient</th>
                     <th>Nature</th>
                     <th>Date</th>
@@ -41,7 +41,7 @@
             <tbody>
                 {% for row in records %}
                 <tr>
-                    <td>{{ row['id'] }}</td>
+                    <td>{{ loop.index }}</td>
                     <td>{{ row['patient_name'] }}</td>
                     <td>{{ row['nature_of_call'] or '-' }}</td>
                     <td>{{ row['call_date'] or '-' }}</td>
@@ -69,22 +69,27 @@
     function confirmDeleteAllWithBackup(event, form) {
         event.preventDefault();
 
-        const shouldBackup = confirm('Do you want to download a backup database before deleting all entries?');
-        if (!shouldBackup) {
+        const shouldBackup = confirm('Download backup before deletion?\n\nPress OK for Yes, Cancel for No.');
+
+        if (shouldBackup) {
+            const backupLink = document.getElementById('backup-db-link');
+            if (backupLink) {
+                backupLink.click();
+            }
+
+            window.setTimeout(() => {
+                const shouldDelete = confirm('Backup download started. Delete all entries now?');
+                if (shouldDelete) {
+                    form.submit();
+                }
+            }, 300);
             return false;
         }
 
-        const backupLink = document.getElementById('backup-db-link');
-        if (backupLink) {
-            backupLink.click();
+        const shouldDeleteWithoutBackup = confirm('Delete all entries without backup?');
+        if (shouldDeleteWithoutBackup) {
+            form.submit();
         }
-
-        window.setTimeout(() => {
-            const shouldDelete = confirm('Backup download started. Delete all entries now?');
-            if (shouldDelete) {
-                form.submit();
-            }
-        }, 300);
 
         return false;
     }

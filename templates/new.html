@@ -559,20 +559,6 @@
                 <input type="checkbox" name="refusal_treatment_agreement" value="Confirmed">
                 Agreed
             </label>
-            <div class="sheet-row cols-3 consent-sign-row">
-                <div>
-                    <label>Name</label>
-                    <input name="refusal_treatment_patient_signature" placeholder="Name">
-                </div>
-                <div>
-                    <label>Date</label>
-                    <input name="refusal_treatment_date" type="date">
-                </div>
-                <div>
-                    <label>Time</label>
-                    <input name="refusal_treatment_time" type="time">
-                </div>
-            </div>
         </div>
 
         <div class="consent-box">
@@ -581,20 +567,6 @@
                 <input type="checkbox" name="refusal_admission_agreement" value="Confirmed">
                 Agreed
             </label>
-            <div class="sheet-row cols-3 consent-sign-row">
-                <div>
-                    <label>Name</label>
-                    <input name="refusal_admission_physician_signature" placeholder="Name">
-                </div>
-                <div>
-                    <label>Date</label>
-                    <input name="refusal_admission_date" type="date">
-                </div>
-                <div>
-                    <label>Time</label>
-                    <input name="refusal_admission_time" type="time">
-                </div>
-            </div>
         </div>
     </section>
 
@@ -667,6 +639,16 @@
         document.querySelectorAll(`input[type="checkbox"][name="${name}"]`).forEach((field) => {
             field.checked = selected.has(field.value);
         });
+    }
+
+    function setAgreementStatus(name, value) {
+        const field = document.querySelector(`input[type="checkbox"][name="${name}"]`);
+        if (!field) {
+            return;
+        }
+
+        const normalized = String(value || '').trim().toLowerCase();
+        field.checked = normalized === 'agreed' || normalized === 'confirmed' || normalized === 'true' || normalized === '1';
     }
 
     function syncSymptomsField() {
@@ -773,6 +755,8 @@
         Object.entries(prefillSimple).forEach(([name, value]) => setSimpleField(name, value));
         Object.entries(prefillRadio).forEach(([name, value]) => setRadioValue(name, value));
         Object.entries(prefillMulti).forEach(([name, values]) => setMultiValues(name, values));
+        setAgreementStatus('refusal_treatment_agreement', prefillSimple.refusal_treatment_agreement);
+        setAgreementStatus('refusal_admission_agreement', prefillSimple.refusal_admission_agreement);
 
         symptoms = Array.isArray(prefillSymptoms) ? [...prefillSymptoms] : [];
         syncSymptomsField();

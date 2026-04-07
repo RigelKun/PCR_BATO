@@ -13,7 +13,18 @@
             <a href="{{ url_for('records') }}">Dashboard</a>
             <a href="{{ url_for('new_pcr') }}">New PCR</a>
             <a href="{{ url_for('export_records_csv') }}">Export CSV</a>
-            <a href="{{ url_for('export_records_xlsx') }}">Export XLSX</a>
+            <details class="nav-export-dropdown">
+                <summary>Export XLSX</summary>
+                <form method="get" action="{{ url_for('export_records_xlsx') }}" class="nav-export-form">
+                    <select name="page" aria-label="Select XLSX export range" required>
+                        <option value="" selected disabled>Select range</option>
+                        {% for export_range in export_ranges %}
+                        <option value="{{ export_range['page'] }}">{{ export_range['label'] }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" {% if not export_ranges %}disabled{% endif %}>Download</button>
+                </form>
+            </details>
             <a href="{{ url_for('export_records_db') }}">Backup DB</a>
         </nav>
     </header>

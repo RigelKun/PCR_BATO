@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 from pathlib import Path
+from copy import copy
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 from openpyxl import Workbook, load_workbook
@@ -18,6 +19,7 @@ BACKUP_DIR = BASE_DIR / "backups"
 TEMPLATE_XLSX = BASE_DIR / "instance" / "logsheet_template.xlsx"
 XLSX_EXPORT_HEADER_ROW = 8
 XLSX_EXPORT_FIRST_DATA_ROW = 9
+XLSX_EXPORT_ENTRIES_PER_SHEET = 40
 XLSX_EXPORT_FIELDS = [
     ("type_of_emergency", "Type of Emergency"),
     ("chief_complaint", "Chief Complaint"),
@@ -190,6 +192,18 @@ def _split_csv_values(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _agreement_status(values: list[str] | str | None) -> str:
+    if isinstance(values, list):
+        return "Agreed" if values else "Disagreed"
+    if isinstance(values, str):
+        normalized = values.strip().lower()
+        if normalized in {"agreed", "confirmed", "yes", "true", "1"}:
+            return "Agreed"
+        if normalized in {"disagreed", "no", "false", "0"}:
+            return "Disagreed"
+    return "Disagreed"
+
+
 def _load_form_data(row: sqlite3.Row) -> dict:
     try:
         return json.loads(row["form_data"] or "{}")
@@ -203,43 +217,95 @@ def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
     else:
         workbook = Workbook()
 
-    worksheet = workbook.active
-    worksheet.title = "PCR Records"
-    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
-    worksheet.page_setup.orientation = "landscape"
-    worksheet.page_setup.fitToWidth = 1
-    worksheet.page_setup.fitToHeight = 1
-    worksheet.print_options.horizontalCentered = True
-    worksheet.page_margins.left = 0.25
-    worksheet.page_margins.right = 0.25
-    worksheet.page_margins.top = 0.35
-    worksheet.page_margins.bottom = 0.35
-
     thin_side = Side(style="thin", color="000000")
     cell_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
-    for column_index, (_field_name, label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
-        cell = worksheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index)
-        cell.value = label
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = cell_border
+    chunks = [rows[index:index + XLSX_EXPORT_ENTRIES_PER_SHEET] for index in range(0, len(rows), XLSX_EXPORT_ENTRIES_PER_SHEET)]
 
-    for row_index, row in enumerate(rows, start=XLSX_EXPORT_FIRST_DATA_ROW):
-        row_data = _extract_xlsx_row(row)
-        for column_index, (field_name, _label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
-            cell = worksheet.cell(row=row_index, column=column_index)
-            cell.value = row_data[field_name]
+    if not chunks:
+        chunks = [[]]
+
+    base_sheet = workbook.active
+
+    for sheet_index, chunk in enumerate(chunks, start=1):
+        if sheet_index == 1:
+            worksheet = base_sheet
+            worksheet.title = "PCR Records"
+        else:
+            worksheet = workbook.create_sheet(title=f"PCR Records {sheet_index}")
+            # Match layout so extra sheets don't look compressed.
+            for column_letter, dimension in base_sheet.column_dimensions.items():
+                if dimension.width is not None:
+                    worksheet.column_dimensions[column_letter].width = dimension.width
+            for row_num in range(1, XLSX_EXPORT_FIRST_DATA_ROW):
+                base_height = base_sheet.row_dimensions[row_num].height
+                if base_height is not None:
+                    worksheet.row_dimensions[row_num].height = base_height
+
+            # Copy the visible template/header block so continuation sheets look the same.
+            for row_num in range(1, XLSX_EXPORT_FIRST_DATA_ROW):
+                for col_num in range(1, len(XLSX_EXPORT_FIELDS) + 1):
+                    source_cell = base_sheet.cell(row=row_num, column=col_num)
+                    target_cell = worksheet.cell(row=row_num, column=col_num)
+                    target_cell.value = source_cell.value
+                    target_cell._style = copy(source_cell._style)
+                    if source_cell.has_style:
+                        target_cell.font = copy(source_cell.font)
+                        target_cell.fill = copy(source_cell.fill)
+                        target_cell.border = copy(source_cell.border)
+                        target_cell.alignment = copy(source_cell.alignment)
+                        target_cell.number_format = source_cell.number_format
+                        target_cell.protection = copy(source_cell.protection)
+
+            for merged_range in base_sheet.merged_cells.ranges:
+                if merged_range.max_row < XLSX_EXPORT_FIRST_DATA_ROW:
+                    worksheet.merge_cells(str(merged_range))
+
+            worksheet.sheet_view.zoomScale = base_sheet.sheet_view.zoomScale
+            worksheet.sheet_view.zoomScaleNormal = base_sheet.sheet_view.zoomScaleNormal
+
+        worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+        worksheet.page_setup.orientation = "landscape"
+        worksheet.page_setup.fitToWidth = 1
+        worksheet.page_setup.fitToHeight = 1
+        worksheet.page_setup.scale = None
+        worksheet.print_options.horizontalCentered = True
+        worksheet.print_title_rows = f"{XLSX_EXPORT_HEADER_ROW}:{XLSX_EXPORT_HEADER_ROW}"
+        worksheet.page_margins.left = 0.25
+        worksheet.page_margins.right = 0.25
+        worksheet.page_margins.top = 0.35
+        worksheet.page_margins.bottom = 0.35
+
+        # Ensure sheet is fresh before writing this chunk.
+        for row_index in range(XLSX_EXPORT_FIRST_DATA_ROW, max(worksheet.max_row, XLSX_EXPORT_FIRST_DATA_ROW) + 1):
+            for col_index in range(1, len(XLSX_EXPORT_FIELDS) + 1):
+                worksheet.cell(row=row_index, column=col_index).value = None
+
+        for column_index, (_field_name, label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
+            cell = worksheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index)
+            cell.value = label
+            cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = cell_border
+
+        for row_offset, row in enumerate(chunk, start=0):
+            row_index = XLSX_EXPORT_FIRST_DATA_ROW + row_offset
+            row_data = _extract_xlsx_row(row)
+            worksheet.row_dimensions[row_index].height = 20
+            for column_index, (field_name, _label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
+                cell = worksheet.cell(row=row_index, column=column_index)
+                cell.value = row_data[field_name]
+                cell.alignment = Alignment(horizontal="center", vertical="center", shrink_to_fit=True)
+                cell.border = cell_border
+
+        last_data_row = max(XLSX_EXPORT_HEADER_ROW, XLSX_EXPORT_FIRST_DATA_ROW + len(chunk) - 1)
+        worksheet.print_area = f"A1:L{last_data_row}"
 
     return workbook
 
 
 def _merge_template_assets(export_bytes: bytes) -> bytes:
     template_files = {
-        "[Content_Types].xml",
-        "xl/sharedStrings.xml",
         "xl/worksheets/_rels/sheet1.xml.rels",
         "xl/drawings/drawing1.xml",
         "xl/drawings/_rels/drawing1.xml.rels",
@@ -253,6 +319,41 @@ def _merge_template_assets(export_bytes: bytes) -> bytes:
             if info.filename in template_files:
                 continue
             data = export_zip.read(info.filename)
+            if info.filename == "[Content_Types].xml":
+                ct_ns = "http://schemas.openxmlformats.org/package/2006/content-types"
+                root = ET.fromstring(data)
+
+                has_png_default = any(
+                    child.tag == f"{{{ct_ns}}}Default" and child.attrib.get("Extension") == "png"
+                    for child in root
+                )
+                if not has_png_default:
+                    root.append(
+                        ET.Element(
+                            f"{{{ct_ns}}}Default",
+                            {
+                                "Extension": "png",
+                                "ContentType": "image/png",
+                            },
+                        )
+                    )
+
+                has_drawing_override = any(
+                    child.tag == f"{{{ct_ns}}}Override" and child.attrib.get("PartName") == "/xl/drawings/drawing1.xml"
+                    for child in root
+                )
+                if not has_drawing_override:
+                    root.append(
+                        ET.Element(
+                            f"{{{ct_ns}}}Override",
+                            {
+                                "PartName": "/xl/drawings/drawing1.xml",
+                                "ContentType": "application/vnd.openxmlformats-officedocument.drawing+xml",
+                            },
+                        )
+                    )
+
+                data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
             if info.filename == "xl/styles.xml":
                 styles_xml = data.decode("utf-8")
                 target = 'numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1" pivotButton="0" quotePrefix="0" xfId="0"><alignment horizontal="center" vertical="center" /></xf>'
@@ -292,6 +393,22 @@ def _excel_column_letter(column_index: int) -> str:
     return letters
 
 
+def _build_export_ranges(total_records: int) -> list[dict[str, int | str]]:
+    ranges: list[dict[str, int | str]] = []
+    for start in range(1, total_records + 1, XLSX_EXPORT_ENTRIES_PER_SHEET):
+        end = min(start + XLSX_EXPORT_ENTRIES_PER_SHEET - 1, total_records)
+        page = ((start - 1) // XLSX_EXPORT_ENTRIES_PER_SHEET) + 1
+        ranges.append({"page": page, "start": start, "end": end, "label": f"{start}-{end}"})
+    return ranges
+
+
+@app.context_processor
+def inject_export_ranges() -> dict[str, list[dict[str, int | str]]]:
+    db = get_db()
+    total_records = db.execute("SELECT COUNT(*) AS total FROM pcr_reports").fetchone()["total"]
+    return {"export_ranges": _build_export_ranges(total_records)}
+
+
 def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None) -> dict:
     form_data = form_data or {}
 
@@ -305,7 +422,6 @@ def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None
     team_destination = form_data.get("team_destination", {})
     mvc = form_data.get("mvc", {})
     consent_refusal = form_data.get("consent_refusal", {})
-
     if row is None:
         patient_name = ""
         nature_of_call = ""
@@ -387,24 +503,10 @@ def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None
             "law_enforcer_name": mvc.get("law_enforcer_name", ""),
             "law_enforcer_contact": mvc.get("law_enforcer_contact", ""),
             "consent_patient_name": consent_refusal.get("consent_patient_name", ""),
-            "consent_patient_signature": consent_refusal.get("consent_patient_signature", ""),
             "consent_date": consent_refusal.get("consent_date", ""),
             "consent_time": consent_refusal.get("consent_time", ""),
-            "consent_guardian_signature": consent_refusal.get("consent_guardian_signature", ""),
-            "consent_guardian_date": consent_refusal.get("consent_guardian_date", ""),
-            "consent_guardian_time": consent_refusal.get("consent_guardian_time", ""),
-            "refusal_treatment_patient_signature": consent_refusal.get("refusal_treatment_patient_signature", ""),
-            "refusal_treatment_witness": consent_refusal.get("refusal_treatment_witness", ""),
-            "refusal_treatment_date": consent_refusal.get("refusal_treatment_date", ""),
-            "refusal_treatment_time": consent_refusal.get("refusal_treatment_time", ""),
-            "refusal_admission_facility": consent_refusal.get("refusal_admission_facility", ""),
-            "refusal_admission_reason": consent_refusal.get("refusal_admission_reason", ""),
-            "refusal_admission_date": consent_refusal.get("refusal_admission_date", ""),
-            "refusal_admission_time": consent_refusal.get("refusal_admission_time", ""),
-            "refusal_admission_physician_signature": consent_refusal.get("refusal_admission_physician_signature", ""),
-            "refusal_admission_physician_datetime": consent_refusal.get("refusal_admission_physician_datetime", ""),
-            "refusal_admission_witness_signature": consent_refusal.get("refusal_admission_witness_signature", ""),
-            "refusal_admission_witness_datetime": consent_refusal.get("refusal_admission_witness_datetime", ""),
+            "refusal_treatment_agreement": consent_refusal.get("refusal_treatment_agreement", "Disagreed"),
+            "refusal_admission_agreement": consent_refusal.get("refusal_admission_agreement", "Disagreed"),
         },
         "radio": {
             "nature_of_call": nature_of_call,
@@ -425,9 +527,6 @@ def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None
             "care_circulation": form_data.get("care_management", {}).get("circulation", []),
             "care_immobilization": form_data.get("care_management", {}).get("immobilization", []),
             "care_wound": form_data.get("care_management", {}).get("wound_care", []),
-            "consent_agreement": consent_refusal.get("consent_agreement", []),
-            "refusal_treatment_agreement": consent_refusal.get("refusal_treatment_agreement", []),
-            "refusal_admission_agreement": consent_refusal.get("refusal_admission_agreement", []),
         },
         "symptoms": _split_csv_values(sample_history.get("symptoms", "")),
         "next_of_kin": form_data.get("next_of_kin", {}).get("kins", []),
@@ -485,40 +584,6 @@ def _extract_xlsx_row(row: sqlite3.Row) -> dict[str, str]:
         "communicator": communicator,
         "remarks": narrative,
     }
-
-
-def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
-    if TEMPLATE_XLSX.exists():
-        workbook = load_workbook(TEMPLATE_XLSX)
-    else:
-        workbook = Workbook()
-
-    worksheet = workbook.active
-    worksheet.title = "PCR Records"
-    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
-    worksheet.page_setup.orientation = "landscape"
-    worksheet.page_setup.fitToWidth = 1
-    worksheet.page_setup.fitToHeight = 1
-    worksheet.print_options.horizontalCentered = True
-    worksheet.page_margins.left = 0.25
-    worksheet.page_margins.right = 0.25
-    worksheet.page_margins.top = 0.35
-    worksheet.page_margins.bottom = 0.35
-
-    for column_index, (_field_name, label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
-        cell = worksheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index)
-        cell.value = label
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    for row_index, row in enumerate(rows, start=XLSX_EXPORT_FIRST_DATA_ROW):
-        row_data = _extract_xlsx_row(row)
-        for column_index, (field_name, _label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
-            cell = worksheet.cell(row=row_index, column=column_index)
-            cell.value = row_data[field_name]
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    return workbook
 
 
 def _collect_form_data() -> dict:
@@ -636,27 +701,10 @@ def _collect_form_data() -> dict:
         },
         "consent_refusal": {
             "consent_patient_name": request.form.get("consent_patient_name", "").strip(),
-            "consent_patient_signature": request.form.get("consent_patient_signature", "").strip(),
             "consent_date": request.form.get("consent_date", "").strip(),
             "consent_time": request.form.get("consent_time", "").strip(),
-            "consent_guardian_signature": request.form.get("consent_guardian_signature", "").strip(),
-            "consent_guardian_date": request.form.get("consent_guardian_date", "").strip(),
-            "consent_guardian_time": request.form.get("consent_guardian_time", "").strip(),
-            "consent_agreement": _collect_multi("consent_agreement"),
-            "refusal_treatment_patient_signature": request.form.get("refusal_treatment_patient_signature", "").strip(),
-            "refusal_treatment_witness": request.form.get("refusal_treatment_witness", "").strip(),
-            "refusal_treatment_date": request.form.get("refusal_treatment_date", "").strip(),
-            "refusal_treatment_time": request.form.get("refusal_treatment_time", "").strip(),
-            "refusal_treatment_agreement": _collect_multi("refusal_treatment_agreement"),
-            "refusal_admission_facility": request.form.get("refusal_admission_facility", "").strip(),
-            "refusal_admission_reason": request.form.get("refusal_admission_reason", "").strip(),
-            "refusal_admission_date": request.form.get("refusal_admission_date", "").strip(),
-            "refusal_admission_time": request.form.get("refusal_admission_time", "").strip(),
-            "refusal_admission_physician_signature": request.form.get("refusal_admission_physician_signature", "").strip(),
-            "refusal_admission_physician_datetime": request.form.get("refusal_admission_physician_datetime", "").strip(),
-            "refusal_admission_witness_signature": request.form.get("refusal_admission_witness_signature", "").strip(),
-            "refusal_admission_witness_datetime": request.form.get("refusal_admission_witness_datetime", "").strip(),
-            "refusal_admission_agreement": _collect_multi("refusal_admission_agreement"),
+            "refusal_treatment_agreement": _agreement_status(request.form.getlist("refusal_treatment_agreement")),
+            "refusal_admission_agreement": _agreement_status(request.form.getlist("refusal_admission_agreement")),
         },
     }
 
@@ -872,7 +920,7 @@ def delete_all_records():
 @app.route("/records/export.csv")
 def export_records_csv():
     db = get_db()
-    rows = db.execute("SELECT * FROM pcr_reports ORDER BY id DESC").fetchall()
+    rows = db.execute("SELECT * FROM pcr_reports ORDER BY id ASC").fetchall()
 
     export_rows: list[dict[str, str]] = []
     fieldnames: list[str] = [
@@ -926,8 +974,35 @@ def export_records_csv():
 
 @app.route("/records/export.xlsx")
 def export_records_xlsx():
+    selected_page_raw = request.args.get("page", "").strip()
+    selected_page = None
+    if selected_page_raw:
+        try:
+            selected_page = int(selected_page_raw)
+            if selected_page < 1:
+                raise ValueError
+        except ValueError:
+            flash("Invalid XLSX range selection.", "error")
+            return redirect(url_for("records"))
+
     db = get_db()
-    rows = db.execute("SELECT * FROM pcr_reports ORDER BY id DESC").fetchall()
+    if selected_page is None:
+        rows = db.execute("SELECT * FROM pcr_reports ORDER BY id ASC").fetchall()
+        download_name = "pcr_records.xlsx"
+    else:
+        offset = (selected_page - 1) * XLSX_EXPORT_ENTRIES_PER_SHEET
+        rows = db.execute(
+            "SELECT * FROM pcr_reports ORDER BY id ASC LIMIT ? OFFSET ?",
+            (XLSX_EXPORT_ENTRIES_PER_SHEET, offset),
+        ).fetchall()
+        if not rows:
+            flash("Selected XLSX range is empty.", "error")
+            return redirect(url_for("records"))
+
+        start_record = offset + 1
+        end_record = offset + len(rows)
+        download_name = f"pcr_records_{start_record}-{end_record}.xlsx"
+
     workbook = _build_xlsx_workbook(rows)
     output = io.BytesIO()
     workbook.save(output)
@@ -936,7 +1011,7 @@ def export_records_xlsx():
     return send_file(
         io.BytesIO(final_bytes),
         as_attachment=True,
-        download_name="pcr_records.xlsx",
+        download_name=download_name,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
