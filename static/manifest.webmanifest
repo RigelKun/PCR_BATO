@@ -1,0 +1,22 @@
+{
+  "name": "PCR Input System",
+  "short_name": "PCR",
+  "description": "Patient Care Report entry and export application",
+  "start_url": "/records",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#0e7490",
+  "icons": [
+    {
+      "src": "/static/images/mdrrmo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/images/mdrrmo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

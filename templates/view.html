@@ -17,7 +17,7 @@
 
     {% for section_name, section_data in form_data.items() %}
     <article class="view-section">
-        <h3>{{ section_name.replace('_', ' ').title() }}</h3>
+        <h3>{% if section_name == 'mvc' %}MVC{% else %}{{ section_name.replace('_', ' ').title() }}{% endif %}</h3>
         {% if section_data is mapping %}
             <table>
                 <tbody>
@@ -30,6 +30,25 @@
                                     <img class="diagram-base" src="{{ url_for('static', filename='images/PCR.jpg') }}" alt="Body diagram base">
                                     <img class="diagram-overlay" src="{{ value }}" alt="Saved body diagram drawing overlay">
                                 </div>
+                            {% elif value is sequence and value is not string and value|length > 0 and value[0] is mapping %}
+                                <div class="table-wrap">
+                                    <table class="table table-sm table-bordered mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Contact</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for item in value %}
+                                            <tr>
+                                                <td>{{ item.get('name', '-') or '-' }}</td>
+                                                <td>{{ item.get('contact', '-') or '-' }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
                             {% elif value is sequence and value is not string %}
                                 {{ value | join(', ') if value else '-' }}
                             {% else %}
@@ -40,6 +59,49 @@
                     {% endfor %}
                 </tbody>
             </table>
+        {% elif section_name == 'vital_signs' and section_data is sequence and section_data is not string and section_data|length > 0 and section_data[0] is mapping %}
+            <div class="table-wrap">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Time</th>
+                            <th>LOC</th>
+                            <th>BP</th>
+                            <th>RR</th>
+                            <th>PR</th>
+                            <th>Temp</th>
+                            <th>SpO2</th>
+                            <th>RBS</th>
+                            <th>Pain</th>
+                            <th>E</th>
+                            <th>V</th>
+                            <th>M</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in section_data %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ item.get('time', '-') or '-' }}</td>
+                            <td>{{ item.get('loc', '-') or '-' }}</td>
+                            <td>{{ item.get('bp', '-') or '-' }}</td>
+                            <td>{{ item.get('rr', '-') or '-' }}</td>
+                            <td>{{ item.get('pr', '-') or '-' }}</td>
+                            <td>{{ item.get('temp', '-') or '-' }}</td>
+                            <td>{{ item.get('spo2', '-') or '-' }}</td>
+                            <td>{{ item.get('rbs', '-') or '-' }}</td>
+                            <td>{{ item.get('pain_scale', '-') or '-' }}</td>
+                            <td>{{ item.get('gcs_eye', '-') or '-' }}</td>
+                            <td>{{ item.get('gcs_verbal', '-') or '-' }}</td>
+                            <td>{{ item.get('gcs_motor', '-') or '-' }}</td>
+                            <td>{{ item.get('gcs_total', '-') or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         {% elif section_data is sequence and section_data is not string %}
             <div class="table-wrap">
                 <table>
@@ -60,7 +122,10 @@
                 </table>
             </div>
         {% else %}
-            <p>{{ section_data if section_data else '-' }}</p>
+            <div style="border: 1px solid #999; padding: 0.5rem; margin-top: 0.5rem;">
+                <strong style="display: block; margin-bottom: 0.3rem;">{{ section_name.replace('_', ' ').title() }}</strong>
+                <p style="margin: 0; word-wrap: break-word; white-space: pre-wrap;">{{ section_data if section_data else '-' }}</p>
+            </div>
         {% endif %}
     </article>
     {% endfor %}

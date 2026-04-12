@@ -24,10 +24,12 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.5rem;
+    padding: 0.8rem 1.2rem;
     background: #ffffffcc;
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(4px);
+    position: relative;
+    z-index: 300;
 }
 
 .topbar nav {
@@ -37,19 +39,28 @@ body {
     flex-wrap: wrap;
 }
 
+.topbar .navbar-brand {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.topbar .btn {
+    border-radius: 10px;
+    padding: 0.38rem 0.78rem;
+    font-weight: 600;
+}
+
 .nav-export-dropdown {
     position: relative;
+    border: 0;
+    padding: 0;
+    background: transparent;
 }
 
 .nav-export-dropdown summary {
     list-style: none;
     cursor: pointer;
-    border: 1px solid #b7cadf;
-    background: #f6fbff;
-    color: #134f77;
-    padding: 0.4rem 0.7rem;
-    border-radius: 8px;
-    font-weight: 600;
+    margin-bottom: 0;
 }
 
 .nav-export-dropdown summary::-webkit-details-marker {
@@ -68,8 +79,12 @@ body {
     border: 1px solid var(--line);
     border-radius: 10px;
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
-    z-index: 40;
-    min-width: 220px;
+    z-index: 400;
+    min-width: 260px;
+}
+
+.nav-export-dropdown[open] {
+    z-index: 400;
 }
 
 .nav-export-form select,
@@ -87,17 +102,30 @@ body {
     font-size: 1.1rem;
 }
 
-.topbar nav a {
-    margin-left: 1rem;
-    color: var(--accent-2);
-    text-decoration: none;
-    font-weight: 600;
-}
-
 .container {
     max-width: 1000px;
     margin: 1.2rem auto;
     padding: 0 1rem;
+}
+
+.auto-dismiss-alert.flash-countdown {
+    animation: alert-flash 0.45s ease-in-out 6;
+}
+
+.auto-dismiss-alert.fade-out {
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+@keyframes alert-flash {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.52;
+    }
 }
 
 .card {
@@ -153,14 +181,14 @@ body {
     }
 }
 
-details {
+.pcr-sheet details {
     border: 1px solid var(--line);
     border-radius: 10px;
     padding: 0.6rem 0.8rem;
     background: #fbfdff;
 }
 
-summary {
+.pcr-sheet summary {
     cursor: pointer;
     font-weight: 700;
     color: #114b5f;
@@ -860,5 +888,27 @@ th {
     .card {
         border: none;
         box-shadow: none;
+    }
+
+    .table-wrap {
+        overflow-x: visible !important;
+    }
+
+    table {
+        page-break-inside: avoid;
+        width: 100%;
+    }
+
+    .view-section {
+        page-break-inside: avoid;
+    }
+
+    .view-section table {
+        font-size: 0.85rem;
+    }
+
+    .view-section table td,
+    .view-section table th {
+        padding: 0.35rem !important;
     }
 }

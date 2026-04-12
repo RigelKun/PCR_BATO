@@ -1,31 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card">
+<section class="card shadow-sm">
     <div class="section-head">
         <h2>PCR Dashboard</h2>
         <div class="inline-actions">
-            <a class="btn-link" href="{{ url_for('new_pcr') }}">+ New PCR</a>
+            <a class="btn btn-primary btn-sm" href="{{ url_for('new_pcr') }}">+ New PCR</a>
             <form
                 id="delete-all-form"
                 method="post"
                 action="{{ url_for('delete_all_records') }}"
                 onsubmit="return confirmDeleteAllWithBackup(event, this);"
             >
-                <button type="submit" class="btn-danger">Delete All</button>
+                <button type="submit" class="btn btn-danger btn-sm">Delete All</button>
             </form>
-            <a id="backup-db-link" class="btn-link" href="{{ url_for('export_records_db') }}" style="display: none;">Backup DB</a>
+            <a id="backup-db-link" class="btn btn-outline-secondary btn-sm" href="{{ url_for('export_records_db') }}" style="display: none;">Backup DB</a>
         </div>
     </div>
 
     <form method="get" class="search-bar">
-        <input name="q" placeholder="Search patient name" value="{{ search_name }}">
-        <input name="date" type="date" value="{{ search_date }}">
-        <button type="submit">Filter</button>
-        <a class="btn-link" href="{{ url_for('records') }}">Reset</a>
+        <input class="form-control" name="q" placeholder="Search patient name" value="{{ search_name }}">
+        <input class="form-control" name="date" type="date" value="{{ search_date }}">
+        <button class="btn btn-primary" type="submit">Filter</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('records') }}">Reset</a>
     </form>
 
     <div class="table-wrap">
-        <table>
+        <table class="table table-sm table-bordered align-middle mb-0">
             <thead>
                 <tr>
                     <th>#</th>
@@ -48,10 +48,10 @@
                     <td>{{ row['time_of_call'] or '-' }}</td>
                     <td>{{ row['status'] }}</td>
                     <td>{{ row['created_at'] }}</td>
-                    <td class="action-cell">
-                        <a class="btn-link" href="{{ url_for('view_record', report_id=row['id']) }}">View</a>
+                    <td class="action-cell d-flex gap-2">
+                        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('view_record', report_id=row['id']) }}">View</a>
                         <form method="post" action="{{ url_for('delete_record', report_id=row['id']) }}" onsubmit="return confirm('Delete this PCR record?')">
-                            <button type="submit" class="btn-danger">Delete</button>
+                            <button type="submit" class="btn btn-danger btn-sm mt-0">Delete</button>
                         </form>
                     </td>
                 </tr>

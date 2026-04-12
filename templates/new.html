@@ -30,6 +30,7 @@
                     <option>Female</option>
                     <option>Other</option>
                 </select>
+                <input id="gender_other" name="gender_other" type="text" placeholder="Please specify" style="display: none; margin-top: 0.35rem;">
             </div>
             <div>
                 <label>Nationality</label>
@@ -556,16 +557,16 @@
         <div class="consent-box">
             <h4>Refusal of Treatment or Transport</h4>
             <label class="consent-check">
-                <input type="checkbox" name="refusal_treatment_agreement" value="Confirmed">
-                Agreed
+                <input type="checkbox" name="refusal_treatment_agreement" value="Disagreed">
+                Disagreed
             </label>
         </div>
 
         <div class="consent-box">
             <h4>Refusal for Admission</h4>
             <label class="consent-check">
-                <input type="checkbox" name="refusal_admission_agreement" value="Confirmed">
-                Agreed
+                <input type="checkbox" name="refusal_admission_agreement" value="Disagreed">
+                Disagreed
             </label>
         </div>
     </section>
@@ -589,6 +590,8 @@
     const drawToolBtn = document.getElementById('diagram_draw_btn');
     const eraseToolBtn = document.getElementById('diagram_erase_btn');
     const clearToolBtn = document.getElementById('diagram_clear_btn');
+    const genderSelect = document.querySelector('[name="gender"]');
+    const genderOtherField = document.getElementById('gender_other');
     const prefillData = JSON.parse(document.getElementById('pcr-prefill-data').textContent || '{}');
     const prefillSimple = prefillData.simple || {};
     const prefillRadio = prefillData.radio || {};
@@ -648,7 +651,38 @@
         }
 
         const normalized = String(value || '').trim().toLowerCase();
-        field.checked = normalized === 'agreed' || normalized === 'confirmed' || normalized === 'true' || normalized === '1';
+        field.checked = normalized === 'disagreed' || normalized === 'confirmed' || normalized === 'true' || normalized === '1';
+    }
+
+    function syncGenderOtherField() {
+        if (!genderSelect || !genderOtherField) {
+            return;
+        }
+
+        const isOther = genderSelect.value === 'Other';
+        genderOtherField.style.display = isOther ? 'block' : 'none';
+        genderOtherField.required = isOther;
+        if (!isOther) {
+            genderOtherField.value = '';
+        }
+    }
+
+    function applyGenderPrefill() {
+        if (!genderSelect || !genderOtherField) {
+            return;
+        }
+
+        const value = (prefillSimple.gender || '').trim();
+        const otherValue = (prefillSimple.gender_other || '').trim();
+        if (value && value !== 'Male' && value !== 'Female' && value !== 'Other') {
+            genderSelect.value = 'Other';
+            genderOtherField.value = value;
+        } else {
+            genderSelect.value = value;
+            genderOtherField.value = otherValue;
+        }
+
+        syncGenderOtherField();
     }
 
     function syncSymptomsField() {
@@ -753,6 +787,7 @@
 
     function applyPrefill() {
         Object.entries(prefillSimple).forEach(([name, value]) => setSimpleField(name, value));
+        applyGenderPrefill();
         Object.entries(prefillRadio).forEach(([name, value]) => setRadioValue(name, value));
         Object.entries(prefillMulti).forEach(([name, values]) => setMultiValues(name, values));
         setAgreementStatus('refusal_treatment_agreement', prefillSimple.refusal_treatment_agreement);
@@ -872,6 +907,9 @@
         }
     });
     document.getElementById('add_crew_member_btn').addEventListener('click', addCrewMember);
+    if (genderSelect) {
+        genderSelect.addEventListener('change', syncGenderOtherField);
+    }
     document.getElementById('crew_member_entry').addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
             event.preventDefault();
