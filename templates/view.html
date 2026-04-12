@@ -122,7 +122,10 @@
                 </table>
             </div>
         {% else %}
-            <p>{{ section_data if section_data else '-' }}</p>
+            <div style="border: 1px solid #999; padding: 0.5rem; margin-top: 0.5rem;">
+                <strong style="display: block; margin-bottom: 0.3rem;">{{ section_name.replace('_', ' ').title() }}</strong>
+                <p style="margin: 0; word-wrap: break-word; white-space: pre-wrap;">{{ section_data if section_data else '-' }}</p>
+            </div>
         {% endif %}
     </article>
     {% endfor %}

@@ -36,24 +36,32 @@ BUNDLED_TEMPLATE_XLSX = RESOURCE_DIR / "instance" / "logsheet_template.xlsx"
 XLSX_EXPORT_HEADER_ROW = 8
 XLSX_EXPORT_FIRST_DATA_ROW = 9
 XLSX_EXPORT_ENTRIES_PER_SHEET = 25
-XLSX_EXPORT_ROW_HEIGHT = 30
-XLSX_EXPORT_HEADER_FONT_SIZE = 12
-XLSX_EXPORT_DATA_FONT_SIZE = 11
+XLSX_EXPORT_ROW_HEIGHT = 24
+XLSX_EXPORT_ROW_MIN_HEIGHT = 20
+XLSX_EXPORT_ROW_MAX_HEIGHT = 60
+XLSX_EXPORT_ROW_HEIGHT_PER_LINE = 14
+XLSX_EXPORT_FONT_NAME = "Arial"
+XLSX_EXPORT_HEADER_FONT_SIZE = 9
+XLSX_EXPORT_DATA_FONT_SIZE = 10
 SEED_DEMO_DATA = os.environ.get("PCR_SEED_SAMPLE_DATA", "1").strip().lower() not in {"0", "false", "no", "off"}
+IS_DESKTOP_MODE = os.environ.get("PCR_DESKTOP_MODE", "0").strip() == "1"
 XLSX_EXPORT_FIELDS = [
     ("type_of_emergency", "Type of Emergency"),
-    ("chief_complaint", "Chief Complaint"),
-    ("patient_name", "Name of Patient"),
-    ("patient_address", "Address of Patient"),
-    ("sex", "Sex"),
     ("date_of_incident", "Date of Incident"),
     ("time_of_incident", "Time of Incident"),
-    ("place_of_incident", "Place of Incident"),
+    ("place_of_incident", "Location of Incident"),
+    ("chief_complaint", "Chief Complaint"),
+    ("patient_name", "Patient Name"),
+    ("age", "Age"),
+    ("sex", "Gender"),
+    ("patient_address", "Address"),
+    ("contact_number", "Contact Number"),
     ("driver", "Driver"),
     ("responders", "Responders"),
     ("communicator", "Communicator"),
     ("remarks", "Remarks"),
 ]
+XLSX_COMPACT_FIELDS = {"age", "sex", "time_of_incident", "contact_number"}
 
 app = Flask(
     __name__,
@@ -88,14 +96,6 @@ def init_db() -> None:
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     DATABASE.parent.mkdir(parents=True, exist_ok=True)
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    if not TEMPLATE_XLSX.exists() and BUNDLED_TEMPLATE_XLSX.exists():
-        shutil.copy2(BUNDLED_TEMPLATE_XLSX, TEMPLATE_XLSX)
-
-
-def _get_template_xlsx_path() -> Path:
-    if TEMPLATE_XLSX.exists():
-        return TEMPLATE_XLSX
-    return BUNDLED_TEMPLATE_XLSX
 
     db = sqlite3.connect(DATABASE)
     db.execute(
@@ -120,10 +120,16 @@ def _get_template_xlsx_path() -> Path:
         db.execute("ALTER TABLE pcr_reports ADD COLUMN form_data TEXT NOT NULL DEFAULT '{}' ")
     db.commit()
 
-    total_records = db.execute("SELECT COUNT(*) AS total FROM pcr_reports").fetchone()["total"]
+    total_records = db.execute("SELECT COUNT(*) FROM pcr_reports").fetchone()[0]
     if total_records == 0 and SEED_DEMO_DATA:
         _seed_demo_records(db)
     db.close()
+
+
+def _get_template_xlsx_path() -> Path:
+    if BUNDLED_TEMPLATE_XLSX.exists():
+        return BUNDLED_TEMPLATE_XLSX
+    return TEMPLATE_XLSX
 
 
 def _build_seed_record(index: int) -> tuple[str, str, str, str, str, dict]:
@@ -152,12 +158,14 @@ def _build_seed_record(index: int) -> tuple[str, str, str, str, str, dict]:
         "Flores",
     ]
     locations = [
-        "Poblacion North, Bato",
-        "Poblacion South, Bato",
-        "San Isidro Barangay Hall",
-        "Rural Health Unit Area",
-        "Coastal Road, Bato",
-        "Mountain View, Bato",
+        "Bato District Hospital",
+        "Catbalogan Provincial Hospital",
+        "Public Market, Bato",
+        "Coastal Highway, KM 5",
+        "Barangay Health Station, San Roque",
+        "Barrangay Road, Liguan",
+        "School Grounds, Poblacion",
+        "National Highway Junction",
     ]
     facilities = [
         "Bato District Hospital",
@@ -338,8 +346,8 @@ def _build_seed_record(index: int) -> tuple[str, str, str, str, str, dict]:
             "consent_patient_name": patient_name,
             "consent_date": call_date,
             "consent_time": time_of_call,
-            "refusal_treatment_agreement": "Agreed",
-            "refusal_admission_agreement": "Agreed",
+            "refusal_treatment_agreement": "",
+            "refusal_admission_agreement": "",
         },
     }
 
@@ -497,14 +505,14 @@ def _split_csv_values(value: str) -> list[str]:
 
 def _agreement_status(values: list[str] | str | None) -> str:
     if isinstance(values, list):
-        return "Agreed" if values else "Disagreed"
+        return "Disagreed" if values else ""
     if isinstance(values, str):
         normalized = values.strip().lower()
-        if normalized in {"agreed", "confirmed", "yes", "true", "1"}:
-            return "Agreed"
-        if normalized in {"disagreed", "no", "false", "0"}:
+        if normalized in {"disagreed", "confirmed", "yes", "true", "1"}:
             return "Disagreed"
-    return "Disagreed"
+        if normalized in {"agreed"}:
+            return "Agreed"
+    return ""
 
 
 def _load_form_data(row: sqlite3.Row) -> dict:
@@ -514,10 +522,42 @@ def _load_form_data(row: sqlite3.Row) -> dict:
         return {}
 
 
+def _coerce_xlsx_cell_value(field_name: str, value: str):
+    if field_name == "age":
+        text = "" if value is None else str(value).strip()
+        if text.isdigit():
+            return int(text)
+
+    if field_name == "contact_number":
+        digits_only = "".join(ch for ch in ("" if value is None else str(value).strip()) if ch.isdigit())
+        if digits_only:
+            return int(digits_only)
+
+    return value
+
+
+def _estimate_wrapped_text_lines(value: object, column_width: float | None) -> int:
+    text = "" if value is None else str(value)
+    if not text.strip():
+        return 1
+
+    effective_width = column_width if column_width and column_width > 0 else 12
+    chars_per_line = max(6, int(effective_width * 1.15))
+
+    lines = 0
+    for part in text.splitlines() or [text]:
+        part_length = len(part.strip())
+        lines += max(1, (part_length + chars_per_line - 1) // chars_per_line)
+    return lines
+
+
 def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
     template_path = _get_template_xlsx_path()
-    if template_path.exists():
-        workbook = load_workbook(template_path)
+    using_template = template_path.exists()
+    preserve_template_header = using_template
+
+    if using_template:
+        workbook = load_workbook(template_path, rich_text=True)
     else:
         workbook = Workbook()
 
@@ -530,6 +570,67 @@ def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
         chunks = [[]]
 
     base_sheet = workbook.active
+    if preserve_template_header:
+        sex_column_index = None
+        has_age_column = False
+        for column_index in range(1, base_sheet.max_column + 1):
+            header_value = base_sheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index).value
+            if not isinstance(header_value, str):
+                continue
+            normalized_label = header_value.strip().lower()
+            if normalized_label == "sex":
+                sex_column_index = column_index
+            elif normalized_label == "age":
+                has_age_column = True
+
+        if sex_column_index is not None and not has_age_column:
+            age_column_index = sex_column_index + 1
+            base_sheet.insert_cols(age_column_index)
+
+            source_letter = _excel_column_letter(sex_column_index)
+            target_letter = _excel_column_letter(age_column_index)
+            source_width = base_sheet.column_dimensions[source_letter].width
+            if source_width is not None:
+                base_sheet.column_dimensions[target_letter].width = source_width
+
+            for row_num in range(1, XLSX_EXPORT_FIRST_DATA_ROW):
+                source_cell = base_sheet.cell(row=row_num, column=sex_column_index)
+                target_cell = base_sheet.cell(row=row_num, column=age_column_index)
+                if source_cell.has_style:
+                    target_cell._style = copy(source_cell._style)
+                    target_cell.font = copy(source_cell.font)
+                    target_cell.fill = copy(source_cell.fill)
+                    target_cell.border = copy(source_cell.border)
+                    target_cell.alignment = copy(source_cell.alignment)
+                    target_cell.number_format = source_cell.number_format
+                    target_cell.protection = copy(source_cell.protection)
+                if row_num == XLSX_EXPORT_HEADER_ROW:
+                    target_cell.value = "Age"
+
+    export_fields = XLSX_EXPORT_FIELDS
+    if preserve_template_header:
+        field_to_label = {field_name: label for field_name, label in XLSX_EXPORT_FIELDS}
+        label_to_field = {
+            label.strip().lower(): field_name
+            for field_name, label in XLSX_EXPORT_FIELDS
+            if isinstance(label, str)
+        }
+        # Accept old template headers so we can still output the updated label text.
+        label_to_field["sex"] = "sex"
+        label_to_field["gender"] = "sex"
+        mapped_fields: list[tuple[str, str]] = []
+        for column_index in range(1, base_sheet.max_column + 1):
+            header_value = base_sheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index).value
+            if not isinstance(header_value, str):
+                continue
+            normalized_label = header_value.strip().lower()
+            field_name = label_to_field.get(normalized_label)
+            if field_name:
+                mapped_fields.append((field_name, field_to_label.get(field_name, header_value.strip())))
+        if mapped_fields:
+            export_fields = mapped_fields
+
+    export_column_count = len(export_fields)
 
     for sheet_index, chunk in enumerate(chunks, start=1):
         if sheet_index == 1:
@@ -548,7 +649,7 @@ def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
 
             # Copy the visible template/header block so continuation sheets look the same.
             for row_num in range(1, XLSX_EXPORT_FIRST_DATA_ROW):
-                for col_num in range(1, len(XLSX_EXPORT_FIELDS) + 1):
+                for col_num in range(1, export_column_count + 1):
                     source_cell = base_sheet.cell(row=row_num, column=col_num)
                     target_cell = worksheet.cell(row=row_num, column=col_num)
                     target_cell.value = source_cell.value
@@ -568,6 +669,16 @@ def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
             worksheet.sheet_view.zoomScale = base_sheet.sheet_view.zoomScale
             worksheet.sheet_view.zoomScaleNormal = base_sheet.sheet_view.zoomScaleNormal
 
+        # Keep critical left-side headers readable even if template got narrowed.
+        if worksheet.column_dimensions["A"].width is None or worksheet.column_dimensions["A"].width < 22:
+            worksheet.column_dimensions["A"].width = 22
+        if worksheet.column_dimensions["B"].width is None or worksheet.column_dimensions["B"].width < 18:
+            worksheet.column_dimensions["B"].width = 18
+        if worksheet.column_dimensions["E"].width is None or worksheet.column_dimensions["E"].width < 16:
+            worksheet.column_dimensions["E"].width = 16
+        if worksheet.column_dimensions["J"].width is None or worksheet.column_dimensions["J"].width < 12:
+            worksheet.column_dimensions["J"].width = 12
+
         worksheet.sheet_properties.pageSetUpPr.fitToPage = True
         worksheet.page_setup.orientation = "landscape"
         worksheet.page_setup.fitToWidth = 1
@@ -585,29 +696,67 @@ def _build_xlsx_workbook(rows: list[sqlite3.Row]) -> Workbook:
 
         # Ensure sheet is fresh before writing this chunk.
         for row_index in range(XLSX_EXPORT_FIRST_DATA_ROW, max(worksheet.max_row, XLSX_EXPORT_FIRST_DATA_ROW) + 1):
-            for col_index in range(1, len(XLSX_EXPORT_FIELDS) + 1):
+            for col_index in range(1, export_column_count + 1):
                 worksheet.cell(row=row_index, column=col_index).value = None
 
-        for column_index, (_field_name, label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
+        for column_index, (_field_name, label) in enumerate(export_fields, start=1):
             cell = worksheet.cell(row=XLSX_EXPORT_HEADER_ROW, column=column_index)
+            if preserve_template_header:
+                cell.value = label
+                current_font = cell.font or Font()
+                cell.font = Font(
+                    name=XLSX_EXPORT_FONT_NAME,
+                    sz=XLSX_EXPORT_HEADER_FONT_SIZE,
+                    b=current_font.b,
+                    i=current_font.i,
+                    u=current_font.u,
+                    strike=current_font.strike,
+                    color=current_font.color,
+                    vertAlign=current_font.vertAlign,
+                    underline=current_font.underline,
+                    charset=current_font.charset,
+                    family=current_font.family,
+                    scheme=current_font.scheme,
+                    shadow=current_font.shadow,
+                    outline=current_font.outline,
+                    condense=current_font.condense,
+                    extend=current_font.extend,
+                )
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True, shrink_to_fit=True)
+                continue
             cell.value = label
-            cell.font = Font(bold=True, size=XLSX_EXPORT_HEADER_FONT_SIZE)
-            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.font = Font(name=XLSX_EXPORT_FONT_NAME, bold=True, size=XLSX_EXPORT_HEADER_FONT_SIZE)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True, shrink_to_fit=True)
             cell.border = cell_border
 
         for row_offset, row in enumerate(chunk, start=0):
             row_index = XLSX_EXPORT_FIRST_DATA_ROW + row_offset
             row_data = _extract_xlsx_row(row)
-            worksheet.row_dimensions[row_index].height = XLSX_EXPORT_ROW_HEIGHT
-            for column_index, (field_name, _label) in enumerate(XLSX_EXPORT_FIELDS, start=1):
+            required_lines = 1
+            for column_index, (field_name, _label) in enumerate(export_fields, start=1):
                 cell = worksheet.cell(row=row_index, column=column_index)
-                cell.value = row_data[field_name]
-                cell.font = Font(size=XLSX_EXPORT_DATA_FONT_SIZE)
-                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                cell_value = _coerce_xlsx_cell_value(field_name, row_data[field_name])
+                cell.value = cell_value
+                cell.font = Font(name=XLSX_EXPORT_FONT_NAME, size=XLSX_EXPORT_DATA_FONT_SIZE)
+
+                if field_name in XLSX_COMPACT_FIELDS:
+                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False, shrink_to_fit=True)
+                else:
+                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    column_letter = _excel_column_letter(column_index)
+                    column_width = worksheet.column_dimensions[column_letter].width
+                    required_lines = max(required_lines, _estimate_wrapped_text_lines(cell_value, column_width))
+
                 cell.border = cell_border
 
+            worksheet.row_dimensions[row_index].height = max(
+                XLSX_EXPORT_ROW_MIN_HEIGHT,
+                min(XLSX_EXPORT_ROW_MAX_HEIGHT, max(XLSX_EXPORT_ROW_HEIGHT, required_lines * XLSX_EXPORT_ROW_HEIGHT_PER_LINE)),
+            )
+
         last_data_row = max(XLSX_EXPORT_HEADER_ROW, XLSX_EXPORT_FIRST_DATA_ROW + len(chunk) - 1)
-        worksheet.print_area = f"A1:L{last_data_row}"
+        last_column = _excel_column_letter(export_column_count)
+        worksheet.print_area = f"A1:{last_column}{last_data_row}"
 
     return workbook
 
@@ -629,15 +778,35 @@ def _build_export_ranges(total_records: int) -> list[dict[str, int | str]]:
     return ranges
 
 
+def _get_downloads_dir() -> Path:
+    downloads = Path.home() / "Downloads"
+    if downloads.exists():
+        return downloads
+
+    fallback = APP_DATA_DIR / "exports"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
 @app.context_processor
-def inject_export_ranges() -> dict[str, list[dict[str, int | str]]]:
+def inject_export_ranges() -> dict:
     db = get_db()
     total_records = db.execute("SELECT COUNT(*) AS total FROM pcr_reports").fetchone()["total"]
-    return {"export_ranges": _build_export_ranges(total_records)}
+    return {
+        "export_ranges": _build_export_ranges(total_records),
+        "desktop_mode": IS_DESKTOP_MODE,
+    }
 
 
 def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None) -> dict:
     form_data = form_data or {}
+    patient_info = form_data.get("patient_info", {})
+
+    prefill_gender = patient_info.get("gender", "")
+    prefill_gender_other = patient_info.get("gender_other", "")
+    if prefill_gender and prefill_gender not in {"Male", "Female", "Other"}:
+        prefill_gender_other = prefill_gender
+        prefill_gender = "Other"
 
     sample_history = form_data.get("sample_history", {})
     patient_assessment = form_data.get("patient_assessment", {})
@@ -665,9 +834,10 @@ def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None
     return {
         "simple": {
             "patient_name": patient_name,
-            "age": form_data.get("patient_info", {}).get("age", ""),
-            "gender": form_data.get("patient_info", {}).get("gender", ""),
-            "nationality": form_data.get("patient_info", {}).get("nationality", ""),
+            "age": patient_info.get("age", ""),
+            "gender": prefill_gender,
+            "gender_other": prefill_gender_other,
+            "nationality": patient_info.get("nationality", ""),
             "call_date": call_date,
             "time_of_call": time_of_call,
             "status": status,
@@ -732,8 +902,8 @@ def _build_prefill(form_data: dict | None = None, row: sqlite3.Row | None = None
             "consent_patient_name": consent_refusal.get("consent_patient_name", ""),
             "consent_date": consent_refusal.get("consent_date", ""),
             "consent_time": consent_refusal.get("consent_time", ""),
-            "refusal_treatment_agreement": consent_refusal.get("refusal_treatment_agreement", "Disagreed"),
-            "refusal_admission_agreement": consent_refusal.get("refusal_admission_agreement", "Disagreed"),
+            "refusal_treatment_agreement": consent_refusal.get("refusal_treatment_agreement", ""),
+            "refusal_admission_agreement": consent_refusal.get("refusal_admission_agreement", ""),
         },
         "radio": {
             "nature_of_call": nature_of_call,
@@ -784,6 +954,14 @@ def _flatten_for_csv(value, prefix: str, output: dict[str, str]) -> None:
     output[prefix] = text if text else "N/A"
 
 
+def _resolve_gender_value(patient_info: dict) -> str:
+    gender = str(patient_info.get("gender", "") or "").strip()
+    gender_other = str(patient_info.get("gender_other", "") or "").strip()
+    if gender == "Other" and gender_other:
+        return gender_other
+    return gender
+
+
 def _extract_xlsx_row(row: sqlite3.Row) -> dict[str, str]:
     form_data = _load_form_data(row)
     contact_dispatch = form_data.get("contact_dispatch", {})
@@ -797,15 +975,19 @@ def _extract_xlsx_row(row: sqlite3.Row) -> dict[str, str]:
     if isinstance(type_of_emergency, list):
         type_of_emergency = ", ".join(type_of_emergency)
 
+    resolved_gender = _resolve_gender_value(patient_info)
+
     return {
         "type_of_emergency": type_of_emergency or "",
-        "chief_complaint": form_data.get("patient_assessment", {}).get("chief_complaint", ""),
-        "patient_name": row["patient_name"] or "",
-        "patient_address": contact_dispatch.get("permanent_address", ""),
-        "sex": patient_info.get("gender", ""),
         "date_of_incident": row["call_date"] or "",
         "time_of_incident": row["time_of_call"] or "",
         "place_of_incident": incident_details.get("location_of_incident", ""),
+        "chief_complaint": form_data.get("patient_assessment", {}).get("chief_complaint", ""),
+        "patient_name": row["patient_name"] or "",
+        "age": patient_info.get("age", ""),
+        "sex": resolved_gender,
+        "patient_address": contact_dispatch.get("permanent_address", ""),
+        "contact_number": contact_dispatch.get("contact_number", ""),
         "driver": team_destination.get("ambulance_driver", ""),
         "responders": team_destination.get("responders_tl", "") or ", ".join(team_destination.get("crew_members", [])) or team_destination.get("crew", ""),
         "communicator": communicator,
@@ -814,10 +996,16 @@ def _extract_xlsx_row(row: sqlite3.Row) -> dict[str, str]:
 
 
 def _collect_form_data() -> dict:
+    selected_gender = request.form.get("gender", "").strip()
+    gender_other = request.form.get("gender_other", "").strip()
+    if selected_gender != "Other":
+        gender_other = ""
+
     return {
         "patient_info": {
             "age": request.form.get("age", "").strip(),
-            "gender": request.form.get("gender", "").strip(),
+            "gender": selected_gender,
+            "gender_other": gender_other,
             "nationality": request.form.get("nationality", "").strip(),
             "date": request.form.get("call_date", "").strip(),
             "time_of_call": request.form.get("time_of_call", "").strip(),
@@ -1146,6 +1334,7 @@ def delete_all_records():
 
 @app.route("/records/export.csv")
 def export_records_csv():
+    desktop_save = request.args.get("desktop_save", "0").strip() == "1"
     db = get_db()
     rows = db.execute("SELECT * FROM pcr_reports ORDER BY id ASC").fetchall()
 
@@ -1192,15 +1381,25 @@ def export_records_csv():
     csv_data = output.getvalue()
     output.close()
 
+    csv_bytes = csv_data.encode("utf-8-sig")
+    download_name = "pcr_records.csv"
+
+    if desktop_save:
+        output_path = _get_downloads_dir() / download_name
+        output_path.write_bytes(csv_bytes)
+        flash(f"CSV exported to {output_path}", "success")
+        return redirect(url_for("records"))
+
     return Response(
-        csv_data,
+        csv_bytes,
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=pcr_records.csv"},
+        headers={"Content-Disposition": f"attachment; filename={download_name}"},
     )
 
 
 @app.route("/records/export.xlsx")
 def export_records_xlsx():
+    desktop_save = request.args.get("desktop_save", "0").strip() == "1"
     selected_page_raw = request.args.get("page", "").strip()
     selected_page = None
     if selected_page_raw:
@@ -1233,6 +1432,12 @@ def export_records_xlsx():
     workbook = _build_xlsx_workbook(rows)
     output = io.BytesIO()
     workbook.save(output)
+
+    if desktop_save:
+        output_path = _get_downloads_dir() / download_name
+        output_path.write_bytes(output.getvalue())
+        flash(f"XLSX exported to {output_path}", "success")
+        return redirect(url_for("records"))
 
     return send_file(
         io.BytesIO(output.getvalue()),

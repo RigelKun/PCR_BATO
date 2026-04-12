@@ -1,125 +1,125 @@
-# PCR Patient Care Report App
+# PCR BATO
 
-Flask + SQLite web app for creating, editing, viewing, exporting, and backing up Patient Care Report (PCR) records.
+Flask + SQLite Patient Care Report (PCR) system with web and desktop modes.
 
-## What This App Can Do
+## Features
 
-- Create full PCR records from the form.
-- Edit saved records using the same full form.
-- Draw on the body diagram image (`static/images/PCR.jpg`) and save the drawing per record.
-- Manage dynamic Next of Kin entries.
-- View and print records.
-- Delete records.
-- Export all data to CSV (flattened nested fields).
-- Export a logsheet-style Excel workbook using the `instance/logsheet_template.xlsx` template.
-- Preserve the template logo and print layout in exported XLSX files.
-- Export full database backup (`.db`) for transfer/recovery.
+- Create, edit, view, print, and delete PCR records
+- Full multi-section PCR form (assessment, vitals, team, consent/refusal, narrative)
+- Body diagram drawing (draw/erase/clear) saved per record
+- Dynamic Next of Kin and Crew member entries
+- CSV export of records
+- XLSX logsheet export using the project template
+- Database backup export (`.db`)
+- Dashboard filtering and search
+- Optional desktop app wrapper (`dist/PCR_BATO_Desktop.exe`)
 
 ## Tech Stack
 
-- Python + Flask
-- SQLite (`pcr.db` by default)
-- HTML/CSS/Vanilla JavaScript
+- Python 3
+- Flask
+- SQLite
+- openpyxl
+- pywebview + waitress (desktop mode)
 
-## Project Structure
+## Current Folder Layout
 
-- [app.py](app.py): Flask routes, data collection, DB logic, export/backup endpoints.
-- [templates/base.html](templates/base.html): App shell and top navigation.
-- [templates/new.html](templates/new.html): Full PCR create/edit form.
-- [templates/records.html](templates/records.html): Dashboard list + filters.
-- [templates/view.html](templates/view.html): Printable record details.
-- [static/style.css](static/style.css): Styling.
-- [static/images/PCR.jpg](static/images/PCR.jpg): Body diagram image.
-- `pcr.db`: SQLite DB file (auto-created).
-- `backups/`: Generated DB backup files.
-- `instance/logsheet_template.xlsx`: Excel template file for the logsheet export.
+- `app.py` - main Flask app, DB logic, exports, routes
+- `desktop_app.py` - desktop launcher wrapper
+- `templates/` - UI templates
+- `static/` - CSS, service worker, images
+- `instance/logsheet_template.xlsx` - XLSX template used for export
+- `instance/README.md` - instance notes
+- `dist/PCR_BATO_Desktop.exe` - built desktop executable
+- `requirements.txt` - Python dependencies
 
-## Setup
+## How to Run (App Version)
 
-1. Create and activate a virtual environment.
+1. Create and activate a virtual environment
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
 2. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Run the app:
-
-```bash
-flask run
-```
-
-Or:
+3. Start the app:
 
 ```bash
 python app.py
 ```
 
-4. Open in browser:
+Or run via Flask:
 
-- `http://127.0.0.1:5000/records` (dashboard)
-- `http://127.0.0.1:5000/new` (new PCR)
-
-## How To Use
-
-1. Open the Dashboard at `/records`.
-2. Click `+ New PCR` to start a new record.
-3. Fill in the form from top to bottom.
-4. Complete the body diagram section if needed:
-  - `Draw` to mark injuries or findings.
-  - `Erase` to remove part of a mark.
-  - `Clear` to reset the diagram.
-5. Fill the Team Information and Informed Consent / Refusal sections.
-6. Click `Save PCR` when the record is finished.
-7. After saving, use the Dashboard actions to manage the record:
-  - `View` to open the printable record.
-  - `Edit` to make changes.
-  - `Delete` to remove a single record.
-8. To export data, use the top navigation links:
-  - `Export CSV` for a flattened data file.
-  - `Export XLSX` for the logsheet workbook.
-  - `Backup DB` for the full SQLite backup.
-9. To delete all entries, use `Delete All` on the Dashboard. The app will prompt you to download a backup first before confirming deletion.
-
-## Export and Backup
-
-- Export flattened CSV:
-  - Route: `/records/export.csv`
-  - Includes top-level metadata and flattened nested PCR fields.
-- Export filtered Excel workbook:
-  - Route: `/records/export.xlsx`
-  - Includes only: Type of Emergency, Chief Complaint, Name of Patient, Address of Patient, Sex, Date of Incident, Time of Incident, Place of Incident, Driver, Responders, Communicator, Remarks.
-  - Uses `instance/logsheet_template.xlsx` and preserves the embedded logo and print layout.
-- Export full DB backup:
-  - Route: `/records/export.db`
-  - Also available via top nav `Backup DB`.
-  - Creates a timestamped backup in `backups/` and downloads it.
-- Delete all records:
-  - The dashboard `Delete All` action prompts for a backup download first, then asks for final confirmation before deleting.
-
-## Data Persistence and Reliability
-
-- SQLite durability settings are enabled (`WAL`, `synchronous=FULL`, `foreign_keys=ON`).
-- Create/edit/delete operations include DB error handling with rollback on failure.
-- If a field is empty, CSV output shows `N/A`.
-- The XLSX export is generated from the template workbook and keeps centered, bordered cells for the printed logsheet layout.
-
-## Multi-Computer Use
-
-By default, each computer has its own local DB.
-
-- Local DB path defaults to project `pcr.db`.
-- You can set environment variable `PCR_DB_PATH` to point to a specific database file:
-
-```powershell
-$env:PCR_DB_PATH="C:\path\to\shared_or_custom\pcr.db"
-flask run
+```bash
+flask --app app run
 ```
 
-Use DB backup export/import if you need to transfer records between computers.
+4. Open:
+
+- `http://127.0.0.1:5000/records`
+
+## Run (Desktop)
+
+- Launch `dist/PCR_BATO_Desktop.exe`
+
+The desktop wrapper starts a local server and opens the app in a desktop window.
+
+## Main Routes
+
+- `/records` - dashboard
+- `/new` - create record
+- `/records/<id>` - view record
+- `/records/<id>/edit` - edit record
+- `/records/<id>/delete` - delete record
+- `/records/delete-all` - delete all records
+- `/records/export.csv` - CSV export
+- `/records/export.xlsx` - XLSX export
+- `/records/export.db` - DB backup export
+
+## XLSX Export Columns (Current Order)
+
+1. Type of Emergency
+2. Date of Incident
+3. Time of Incident
+4. Location of Incident
+5. Chief Complaint
+6. Patient Name
+7. Age
+8. Gender
+9. Address
+10. Contact Number
+11. Driver
+12. Responders
+13. Communicator
+14. Remarks
+
+## Data Storage
+
+- **Source mode**: data directory defaults to `instance/`
+- **Desktop EXE mode**: data directory defaults to `%LOCALAPPDATA%/PCR_BATO`
+
+Configurable environment variables:
+
+- `PCR_BATO_DATA_DIR` - override app data directory
+- `PCR_DB_PATH` - override database file path
+- `PCR_SEED_SAMPLE_DATA` - `1`/`0` to enable/disable demo seed data
+
+Example:
+
+```powershell
+$env:PCR_BATO_DATA_DIR = "C:\PCR_BATO_Data"
+$env:PCR_DB_PATH = "C:\PCR_BATO_Data\pcr.db"
+python app.py
+```
 
 ## Notes
 
-- The patient name is required.
-- Next of Kin dynamic entries start at index 1.
-- Injury detail rows (deformity, bleeding, contusion, tenderness, abrasion, laceration, punctured, swelling) are writable and saved.
+- DB uses durability settings: `WAL`, `synchronous=FULL`, `foreign_keys=ON`
+- `patient_name` is required
+- Export and backup are accessible from the top navigation

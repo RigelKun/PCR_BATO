@@ -16,12 +16,22 @@ env/
 # Local database and runtime artifacts
 *.db
 *.sqlite3
-instance/
+
+# Keep only versioned instance assets required by exports
+instance/*
+!instance/README.md
+!instance/logsheet_template.xlsx
 
 # Backups and temporary outputs
 backups/
+instance/backups/
 *.bak
 *.tmp
+
+# Build and packaging outputs
+build/
+dist/*
+!dist/PCR_BATO_Desktop.exe
 
 # Test and coverage artifacts
 .pytest_cache/

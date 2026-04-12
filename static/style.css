@@ -28,6 +28,8 @@ body {
     background: #ffffffcc;
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(4px);
+    position: relative;
+    z-index: 300;
 }
 
 .topbar nav {
@@ -77,8 +79,12 @@ body {
     border: 1px solid var(--line);
     border-radius: 10px;
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
-    z-index: 40;
-    min-width: 220px;
+    z-index: 400;
+    min-width: 260px;
+}
+
+.nav-export-dropdown[open] {
+    z-index: 400;
 }
 
 .nav-export-form select,
@@ -100,6 +106,26 @@ body {
     max-width: 1000px;
     margin: 1.2rem auto;
     padding: 0 1rem;
+}
+
+.auto-dismiss-alert.flash-countdown {
+    animation: alert-flash 0.45s ease-in-out 6;
+}
+
+.auto-dismiss-alert.fade-out {
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+@keyframes alert-flash {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.52;
+    }
 }
 
 .card {
@@ -862,5 +888,27 @@ th {
     .card {
         border: none;
         box-shadow: none;
+    }
+
+    .table-wrap {
+        overflow-x: visible !important;
+    }
+
+    table {
+        page-break-inside: avoid;
+        width: 100%;
+    }
+
+    .view-section {
+        page-break-inside: avoid;
+    }
+
+    .view-section table {
+        font-size: 0.85rem;
+    }
+
+    .view-section table td,
+    .view-section table th {
+        padding: 0.35rem !important;
     }
 }

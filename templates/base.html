@@ -25,7 +25,11 @@
             <nav class="d-flex flex-wrap align-items-center gap-2">
                 <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('records') }}">Dashboard</a>
                 <a class="btn btn-primary btn-sm" href="{{ url_for('new_pcr') }}">New PCR</a>
+                {% if desktop_mode %}
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('export_records_csv', desktop_save=1) }}">Export CSV</a>
+                {% else %}
                 <a class="btn btn-outline-primary btn-sm" href="{{ url_for('export_records_csv') }}">Export CSV</a>
+                {% endif %}
             <details class="nav-export-dropdown">
                 <summary class="btn btn-outline-primary btn-sm mb-0">Export XLSX</summary>
                 <form method="get" action="{{ url_for('export_records_xlsx') }}" class="nav-export-form">
@@ -35,7 +39,12 @@
                         <option value="{{ export_range['page'] }}">{{ export_range['label'] }}</option>
                         {% endfor %}
                     </select>
+                    {% if desktop_mode %}
+                    <input type="hidden" name="desktop_save" value="1">
+                    <button class="btn btn-primary btn-sm" type="submit" {% if not export_ranges %}disabled{% endif %}>Save XLSX</button>
+                    {% else %}
                     <button class="btn btn-primary btn-sm" type="submit" {% if not export_ranges %}disabled{% endif %}>Download</button>
+                    {% endif %}
                 </form>
             </details>
                 <a class="btn btn-outline-dark btn-sm" href="{{ url_for('export_records_db') }}">Backup DB</a>
@@ -47,7 +56,7 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert {% if category == 'success' %}alert-success{% elif category == 'error' %}alert-danger{% else %}alert-info{% endif %}" role="alert">{{ message }}</div>
+                    <div class="alert auto-dismiss-alert {% if category == 'success' %}alert-success{% elif category == 'error' %}alert-danger{% else %}alert-info{% endif %}" role="alert">{{ message }}</div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
@@ -63,9 +72,20 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('{{ url_for('service_worker') }}');
+                navigator.serviceWorker.register("{{ url_for('service_worker') }}");
             });
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const alerts = document.querySelectorAll('.auto-dismiss-alert');
+            alerts.forEach((alert) => {
+                alert.classList.add('flash-countdown');
+                window.setTimeout(() => {
+                    alert.classList.add('fade-out');
+                    window.setTimeout(() => alert.remove(), 280);
+                }, 3000);
+            });
+        });
     </script>
 </body>
 </html>
